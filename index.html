@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Beyblade - Mini juego (HTML) — Multijugador P2P</title>
+  <style>
+    :root{--bg:#0f1724;--panel:#0b1220;--accent:#7dd3fc;--muted:#94a3b8}
+    html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial}
+    body{background:linear-gradient(180deg,#071020 0%, #051223 100%);color:#e6eef6;display:flex;gap:16px;padding:18px;box-sizing:border-box}
+    .panel{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:12px;padding:14px;width:320px;box-shadow:0 6px 24px rgba(2,6,23,0.6)}
+    .big{flex:1;display:flex;flex-direction:column;border-radius:12px;padding:12px}
+    h1{font-size:18px;margin:0 0 8px}
+    label{display:block;font-size:13px;color:var(--muted);margin-top:8px}
+    input[type=range]{width:100%}
+    .row{display:flex;gap:8px}
+    button{background:#0b1220;border:1px solid rgba(125,211,252,0.12);color:var(--accent);padding:8px 10px;border-radius:8px;cursor:pointer}
+    canvas{background:radial-gradient(circle at 50% 35%, #0b1a2a 0%, #07101a 40%);border-radius:12px;display:block;flex:1}
+    .controls{display:flex;align-items:center;gap:8px;margin-top:8px}
+    textarea{width:100%;height:90px;background:#06101a;border:1px solid rgba(255,255,255,0.03);color:#dff5ff;padding:8px;border-radius:8px}
+    .small{font-size:12px;color:var(--muted)}
+    .stats-value{float:right;font-weight:600}
+    .joystick{width:160px;height:160px;border-radius:12px;background:linear-gradient(180deg,#071827, #021019);display:flex;align-items:center;justify-content:center;position:relative}
+    .stick{width:70px;height:70px;border-radius:50%;background:#0b1220;border:3px solid rgba(125,211,252,0.12);position:absolute;touch-action:none}
+    .footer{margin-top:8px;color:var(--muted);font-size:12px}
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h1>Beyblade — Configuración</h1>
+    <div class="small">Elige estadísticas (suma máxima 100). Arrastra para ajustar.</div>
+
+    <label>Nombre <span class="stats-value" id="nameDisplay">Player</span></label>
+    <input id="nameInput" placeholder="Tu nombre" />
+
+    <label>Peso <span class="stats-value" id="weightVal">25</span></label>
+    <input id="weight" type="range" min="5" max="40" value="25" />
+
+    <label>Ataque <span class="stats-value" id="attackVal">25</span></label>
+    <input id="attack" type="range" min="1" max="40" value="25" />
+
+    <label>Defensa <span class="stats-value" id="defVal">25</span></label>
+    <input id="defense" type="range" min="1" max="40" value="25" />
+
+    <label>Resistencia <span class="stats-value" id="staminaVal">25</span></label>
+    <input id="stamina" type="range" min="1" max="40" value="25" />
+
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button id="rand">Aleatorio</button>
+      <button id="apply">Aplicar y listo</button>
+      <button id="reset">Reset</button>
+    </div>
+
+    <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)" />
+
+    <h1 style="font-size:15px">Multijugador P2P (sin servidor)</h1>
+    <div class="small">Intercambia los bloques de texto con la otra persona (copiar/pegar). Usa un único intercambio por partida.</div>
+
+    <div style="margin-top:8px">
+      <button id="createOffer">Crear offer (host)</button>
+      <button id="acceptOffer">Pegar offer y responder (join)</button>
+      <button id="pasteAnswer">Pegar answer</button>
+    </div>
+    <label style="margin-top:10px">Señal (copiar/pegar)</label>
+    <textarea id="signalBox" placeholder="Aquí aparece la offer/answer..."></textarea>
+
+    <div style="margin-top:8px;display:flex;gap:8px">
+      <button id="copySignal">Copiar señal</button>
+      <button id="clearSignal">Limpiar</button>
+    </div>
+
+    <div class="footer">STUN: Google (incluido). Partidas P2P, 1v1. Al desconectar, recargar la página.</div>
+  </div>
+
+  <div class="big">
+    <div style="display:flex;gap:12px;align-items:center">
+      <h1 style="flex:1">Arena 2D — Vista cenital</h1>
+      <div class="small">Estado: <span id="status">desconectado</span></div>
+    </div>
+    <canvas id="c"></canvas>
+
+    <div style="display:flex;gap:12px;margin-top:10px;align-items:flex-start">
+      <div class="joystick" id="joystick">
+        <div class="stick" id="stick"></div>
+      </div>
+      <div style="flex:1">
+        <div class="small">Controles: joystick táctil / arrastrar con ratón / teclas WASD o flechas</div>
+        <div class="controls">
+          <button id="startBtn">Empezar partida</button>
+          <button id="spectateBtn">Spectate (solo ver)</button>
+          <div style="flex:1"></div>
+          <div class="small">Ping: <span id="ping">—</span> ms</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+// ---------- Utilidades y UI ----------
+const qs = s => document.querySelector(s)
+const weight = qs('#weight'), attack = qs('#attack'), defense = qs('#defense'), stamina = qs('#stamina')
+const weightVal = qs('#weightVal'), attackVal = qs('#attackVal'), defVal = qs('#defVal'), staminaVal = qs('#staminaVal')
+const nameInput = qs('#nameInput'), nameDisplay = qs('#nameDisplay')
+const randBtn = qs('#rand'), applyBtn = qs('#apply'), resetBtn = qs('#reset')
+const startBtn = qs('#startBtn'), spectateBtn = qs('#spectateBtn')
+const canvas = qs('#c'), statusEl = qs('#status'), pingEl = qs('#ping')
+const createOfferBtn = qs('#createOffer'), acceptOfferBtn = qs('#acceptOffer'), pasteAnswerBtn = qs('#pasteAnswer')
+const signalBox = qs('#signalBox'), copySignal = qs('#copySignal'), clearSignal = qs('#clearSignal')
+const stickEl = qs('#stick'), joystick = qs('#joystick')
+
+function updateStatLabels(){ weightVal.textContent = weight.value; attackVal.textContent = attack.value; defVal.textContent = defense.value; staminaVal.textContent = stamina.value }
+updateStatLabels()
+[weight,attack,defense,stamina].forEach(i=>i.addEventListener('input',updateStatLabels))
+nameInput.addEventListener('input', ()=> nameDisplay.textContent = nameInput.value || 'Player')
+
+randBtn.addEventListener('click', ()=>{
+  const a = () => Math.floor(5 + Math.random()*35)
+  weight.value = a(); attack.value = a(); defense.value = a(); stamina.value = a(); updateStatLabels()
+})
+resetBtn.addEventListener('click', ()=>{ weight.value=25;attack.value=25;defense.value=25;stamina.value=25;nameInput.value='';nameDisplay.textContent='Player';updateStatLabels() })
+
+copySignal.addEventListener('click', ()=>{ signalBox.select(); document.execCommand('copy'); })
+clearSignal.addEventListener('click', ()=>{ signalBox.value = '' })
+
+// ---------- Canvas y físicas ----------
+canvas.width = Math.min(window.innerWidth-420, 900)
+canvas.height = Math.min(window.innerHeight-80, 700)
+const ctx = canvas.getContext('2d')
+
+function randColor(){ const h = Math.floor(Math.random()*360); return `hsl(${h} 80% 60%)` }
+
+class Bey {
+  constructor(id, name, stats, color){
+    this.id = id; this.name = name; this.color = color || randColor()
+    this.x = canvas.width/2 + (id===1?80:-80)
+    this.y = canvas.height/2
+    this.vx = 0; this.vy = 0; this.angle = 0
+    this.mass = Number(stats.weight) // affects radius and momentum
+    this.attack = Number(stats.attack)
+    this.defense = Number(stats.defense)
+    this.stamina = Number(stats.stamina)
+    this.spin = this.stamina * 5 + 50 // initial spin energy
+    this.radius = Math.max(10, this.mass) + 8
+    this.health = 100
+    this.lastUpdate = performance.now()
+  }
+}
+
+let localPlayer = null
+let remotePlayer = null
+let localInput = {x:0,y:0,thrust:false}
+let connected = false
+let dc = null
+let pc = null
+let role = null // 'host' or 'join'
+let lastPingSent = 0
+
+function applyStatsToLocal(){
+  const s = {weight:weight.value,attack:attack.value,defense:defense.value,stamina:stamina.value}
+  localPlayer = new Bey(1, nameInput.value||'Player', s, randColor())
+}
+
+applyBtn.addEventListener('click', ()=>{
+  applyStatsToLocal()
+  statusEl.textContent = 'config aplicado'
+})
+
+// joystick / keyboard
+let pointerDown = false
+let stickCenter = null
+function updateStickPos(clientX, clientY){
+  const r = joystick.getBoundingClientRect()
+  if(!stickCenter) stickCenter = {x: r.left + r.width/2, y: r.top + r.height/2}
+  const dx = clientX - stickCenter.x, dy = clientY - stickCenter.y
+  const max = 48
+  const len = Math.hypot(dx,dy)
+  const nx = len? dx/len:0, ny = len? dy/len:0
+  const cur = Math.min(len, max)
+  stickEl.style.transform = `translate(${nx*cur}px, ${ny*cur}px)`
+  localInput.x = (nx*cur)/max
+  localInput.y = (ny*cur)/max
+}
+
+joystick.addEventListener('pointerdown', (e)=>{ pointerDown=true; joystick.setPointerCapture(e.pointerId); updateStickPos(e.clientX,e.clientY) })
+window.addEventListener('pointermove', (e)=>{ if(pointerDown) updateStickPos(e.clientX,e.clientY) })
+window.addEventListener('pointerup', (e)=>{ pointerDown=false; stickEl.style.transform='translate(0,0)'; localInput.x=0; localInput.y=0 })
+
+// keyboard
+const keyState = {}
+window.addEventListener('keydown', e=>{ keyState[e.key]=true; updateFromKeys() })
+window.addEventListener('keyup', e=>{ keyState[e.key]=false; updateFromKeys() })
+function updateFromKeys(){
+  let x=0,y=0
+  if(keyState['w']||keyState['ArrowUp']) y=-1
+  if(keyState['s']||keyState['ArrowDown']) y=1
+  if(keyState['a']||keyState['ArrowLeft']) x=-1
+  if(keyState['d']||keyState['ArrowRight']) x=1
+  localInput.x = x; localInput.y = y
+}
+
+// physics loop
+function step(dt){
+  if(!localPlayer) return
+  // apply input as thrust; thrust reduces spin slowly
+  const thrustPower = 120 // base
+  const acc = thrustPower * ( (localPlayer.spin/ (localPlayer.stamina*5 + 50)) )
+  localPlayer.vx += localInput.x * acc * dt / (localPlayer.mass)
+  localPlayer.vy += localInput.y * acc * dt / (localPlayer.mass)
+  // clamp speed
+  const speed = Math.hypot(localPlayer.vx, localPlayer.vy)
+  const maxSpeed = 450 / (localPlayer.mass/10)
+  if(speed>maxSpeed){ localPlayer.vx *= maxSpeed/speed; localPlayer.vy *= maxSpeed/speed }
+  // friction & spin decay
+  const friction = 0.98
+  localPlayer.vx *= Math.pow(friction, dt*60)
+  localPlayer.vy *= Math.pow(friction, dt*60)
+  localPlayer.spin *= Math.pow(0.995, dt*60)
+  // move
+  localPlayer.x += localPlayer.vx * dt
+  localPlayer.y += localPlayer.vy * dt
+  // keep inside arena
+  if(localPlayer.x < localPlayer.radius) { localPlayer.x = localPlayer.radius; localPlayer.vx*=-0.6 }
+  if(localPlayer.y < localPlayer.radius) { localPlayer.y = localPlayer.radius; localPlayer.vy*=-0.6 }
+  if(localPlayer.x > canvas.width-localPlayer.radius) { localPlayer.x = canvas.width-localPlayer.radius; localPlayer.vx*=-0.6 }
+  if(localPlayer.y > canvas.height-localPlayer.radius) { localPlayer.y = canvas.height-localPlayer.radius; localPlayer.vy*=-0.6 }
+
+  // remote physics simulated locally by remote inputs on its own client
+  if(remotePlayer){
+    // collision detection and resolution
+    const dx = remotePlayer.x - localPlayer.x
+    const dy = remotePlayer.y - localPlayer.y
+    const dist = Math.hypot(dx,dy)
+    if(dist < localPlayer.radius + remotePlayer.radius){
+      // simple elastic collision with attack/defense influence
+      const nx = dx/dist, ny = dy/dist
+      // relative velocity along normal
+      const rvx = remotePlayer.vx - localPlayer.vx
+      const rvy = remotePlayer.vy - localPlayer.vy
+      const rel = rvx*nx + rvy*ny
+      if(rel < 0){
+        // impulse
+        const e = 0.7 // restitution
+        const j = -(1+e) * rel / (1/localPlayer.mass + 1/remotePlayer.mass)
+        const ix = j*nx, iy = j*ny
+        localPlayer.vx -= ix / localPlayer.mass
+        localPlayer.vy -= iy / localPlayer.mass
+        remotePlayer.vx += ix / remotePlayer.mass
+        remotePlayer.vy += iy / remotePlayer.mass
+        // attack/defense damage
+        const hitPowerLocal = localPlayer.attack * (localPlayer.spin/100)
+        const hitPowerRemote = remotePlayer.attack * (remotePlayer.spin/100)
+        const dmgToRemote = Math.max(0, hitPowerLocal - remotePlayer.defense*0.6)
+        const dmgToLocal = Math.max(0, hitPowerRemote - localPlayer.defense*0.6)
+        remotePlayer.spin = Math.max(1, remotePlayer.spin - dmgToRemote*0.6)
+        localPlayer.spin = Math.max(1, localPlayer.spin - dmgToLocal*0.6)
+      }
+      // positional correction
+      const overlap = (localPlayer.radius+remotePlayer.radius)-dist
+      const corr = overlap/2
+      localPlayer.x -= nx*corr
+      localPlayer.y -= ny*corr
+      remotePlayer.x += nx*corr
+      remotePlayer.y += ny*corr
+    }
+  }
+}
+
+let last = performance.now()
+function loop(t){
+  const dt = Math.min((t-last)/1000, 0.05)
+  last = t
+  step(dt)
+  render()
+  requestAnimationFrame(loop)
+}
+requestAnimationFrame(loop)
+
+function render(){
+  ctx.clearRect(0,0,canvas.width,canvas.height)
+  // arena
+  ctx.save()
+  ctx.fillStyle = 'rgba(255,255,255,0.02)'
+  ctx.fillRect(0,0,canvas.width,canvas.height)
+  // center arena shading
+  const g = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 10, canvas.width/2, canvas.height/2, Math.max(canvas.width, canvas.height))
+  g.addColorStop(0, 'rgba(255,255,255,0.02)')
+  g.addColorStop(1, 'rgba(0,0,0,0)')
+  ctx.fillStyle = g
+  ctx.fillRect(0,0,canvas.width,canvas.height)
+  ctx.restore()
+
+  // draw players
+  if(remotePlayer){ drawBey(remotePlayer) }
+  if(localPlayer){ drawBey(localPlayer, true) }
+}
+
+function drawBey(b, emphasize=false){
+  // shadow
+  ctx.save()
+  ctx.beginPath()
+  ctx.ellipse(b.x+6, b.y+6, b.radius, b.radius*0.6, 0, 0, Math.PI*2)
+  ctx.fillStyle = 'rgba(0,0,0,0.3)'
+  ctx.fill()
+  ctx.restore()
+
+  // body
+  ctx.beginPath()
+  ctx.arc(b.x,b.y,b.radius,0,Math.PI*2)
+  ctx.fillStyle = b.color
+  ctx.fill()
+  // rim
+  ctx.lineWidth = 4
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)'
+  ctx.stroke()
+  // spin indicator
+  ctx.beginPath()
+  ctx.moveTo(b.x, b.y)
+  const ang = performance.now()/2000 * (b.spin/50)
+  ctx.lineTo(b.x + Math.cos(ang)*b.radius*0.9, b.y + Math.sin(ang)*b.radius*0.9)
+  ctx.lineWidth = 3
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)'
+  ctx.stroke()
+  // name
+  ctx.fillStyle = 'rgba(255,255,255,0.9)'
+  ctx.font = '12px ui-sans-serif'
+  ctx.fillText(b.name || 'player', b.x - b.radius, b.y - b.radius - 6)
+  // stats
+  ctx.fillStyle = 'rgba(255,255,255,0.65)'
+  ctx.font = '11px ui-sans-serif'
+  ctx.fillText('spin: ' + Math.round(b.spin), b.x - b.radius, b.y + b.radius + 14)
+}
+
+// ---------- Multiplayer P2P (WebRTC DataChannel) ----------
+const configuration = {iceServers: [{urls: 'stun:stun.l.google.com:19302'}]}
+
+function setupPeerConnection(){
+  pc = new RTCPeerConnection(configuration)
+  pc.onicecandidate = e => { if(e.candidate) {} }
+  pc.onconnectionstatechange = ()=>{
+    statusEl.textContent = pc.connectionState
+    if(pc.connectionState==='disconnected' || pc.connectionState==='failed' || pc.connectionState==='closed'){
+      connected = false; dc = null; pc = null; role = null
+    }
+  }
+  pc.ondatachannel = ev => { dc = ev.channel; bindDC() }
+}
+
+function bindDC(){
+  if(!dc) return
+  dc.onopen = ()=>{ connected=true; statusEl.textContent='conectado'; console.log('dc open') }
+  dc.onmessage = e => {
+    const obj = JSON.parse(e.data)
+    if(obj.type==='state'){
+      // remote authoritative state
+      if(!remotePlayer){
+        remotePlayer = new Bey(2, obj.name || 'Rival', obj.stats, null)
+      }
+      // simple set (could smooth)
+      remotePlayer.x = obj.x; remotePlayer.y = obj.y; remotePlayer.vx = obj.vx; remotePlayer.vy = obj.vy; remotePlayer.spin = obj.spin
+    } else if(obj.type==='meta'){
+      // handshake meta
+      console.log('meta',obj)
+    } else if(obj.type==='ping'){
+      // pong
+      if(obj.now) dc.send(JSON.stringify({type:'pong', now: obj.now}))
+    } else if(obj.type==='pong'){
+      if(obj.now){ const r = performance.now() - obj.now; pingEl.textContent = Math.round(r) }
+    }
+  }
+}
+
+function sendLocalState(){
+  if(!dc || dc.readyState !== 'open' || !localPlayer) return
+  const msg = {
+    type:'state', name: localPlayer.name, stats: {weight: localPlayer.mass, attack: localPlayer.attack, defense: localPlayer.defense, stamina: localPlayer.stamina},
+    x: localPlayer.x, y: localPlayer.y, vx: localPlayer.vx, vy: localPlayer.vy, spin: localPlayer.spin
+  }
+  dc.send(JSON.stringify(msg))
+}
+
+// periodic state send
+setInterval(()=>{ if(connected) sendLocalState(); if(dc && dc.readyState==='open'){ dc.send(JSON.stringify({type:'ping', now: performance.now()})) } }, 120)
+
+createOfferBtn.addEventListener('click', async ()=>{
+  applyStatsToLocal()
+  role = 'host'
+  setupPeerConnection()
+  dc = pc.createDataChannel('bey')
+  bindDC()
+  const offer = await pc.createOffer()
+  await pc.setLocalDescription(offer)
+  // wait for ICE gather
+  await new Promise(r => setTimeout(r, 800))
+  signalBox.value = JSON.stringify(pc.localDescription)
+  statusEl.textContent = 'offer creada — copia y comparte con rival'
+})
+
+acceptOfferBtn.addEventListener('click', async ()=>{
+  // paste offer from other and create answer
+  const txt = signalBox.value.trim()
+  if(!txt) return alert('Pega la offer del host en la caja de señal')
+  const offer = JSON.parse(txt)
+  role = 'join'
+  setupPeerConnection()
+  await pc.setRemoteDescription(offer)
+  const answer = await pc.createAnswer()
+  await pc.setLocalDescription(answer)
+  // wait ICE
+  await new Promise(r => setTimeout(r, 800))
+  signalBox.value = JSON.stringify(pc.localDescription)
+  statusEl.textContent = 'answer creada — copia y devuelve al host'
+})
+
+pasteAnswerBtn.addEventListener('click', async ()=>{
+  const txt = signalBox.value.trim()
+  if(!txt) return alert('Pega la answer aquí (host)')
+  const answer = JSON.parse(txt)
+  await pc.setRemoteDescription(answer)
+  statusEl.textContent = 'conexión establecida (intento)'
+})
+
+// simple start button
+startBtn.addEventListener('click', ()=>{
+  if(!localPlayer) applyStatsToLocal()
+  // if not connected, just start local vs AI (or spectate)
+  if(!connected){ statusEl.textContent = 'jugando local'; if(!remotePlayer) remotePlayer = new Bey(2,'CPU', {weight:20,attack:20,defense:20,stamina:20}, randColor()) }
+})
+
+spectateBtn.addEventListener('click', ()=>{
+  statusEl.textContent = 'spectating'; localInput={x:0,y:0}
+})
+
+// when DC opens, send a meta with stats
+function sendMeta(){ if(dc && dc.readyState==='open' && localPlayer){ dc.send(JSON.stringify({type:'meta', name: localPlayer.name, stats: {weight: localPlayer.mass, attack: localPlayer.attack, defense: localPlayer.defense, stamina: localPlayer.stamina}})) } }
+
+// ping management
+setInterval(()=>{ if(dc && dc.readyState==='open'){ dc.send(JSON.stringify({type:'ping', now: performance.now()})) } }, 2000)
+
+// save before unload
+window.addEventListener('beforeunload', ()=>{ if(pc) pc.close() })
+
+</script>
+</body>
+</html>
