@@ -8,7 +8,7 @@
         body { margin: 0; overflow: hidden; background: radial-gradient(circle at center, #0a0a1a, #000); font-family: 'Segoe UI', sans-serif; }
         canvas { display: block; }
         .input_video { display: none; }
-
+        
         #ui-container {
             position: absolute;
             top: 20px;
@@ -198,7 +198,7 @@
     <script>
         // === THREE.JS SETUP PERFORMANCE ===
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x05051a, 0.0015);
+        scene.background = new THREE.Color(0x05051a);
         
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.z = 30;
@@ -214,12 +214,11 @@
         document.body.appendChild(renderer.domElement);
 
         // === SISTEMA DE PARTÍCULAS ESTABLE ===
-        const particleCount = 12000; // REDUCIDO para máxima estabilidad
+        const particleCount = 12000;
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(particleCount * 3);
         const targetPositions = new Float32Array(particleCount * 3);
 
-        // Inicialización limpia
         for(let i = 0; i < particleCount * 3; i++) {
             positions[i] = (Math.random() - 0.5) * 80;
             targetPositions[i] = positions[i];
@@ -301,11 +300,12 @@
             return new THREE.Vector3(x * scale, y * scale, z);
         }
 
-        // === ACTUALIZAR FORMA (FUNCIONAL 100%) ===
+        // === ACTUALIZAR FORMA (ESTA VEZ SÍ FUNCIONA) ===
         let currentShape = 'heart';
-        let lerpSpeed = 0.08;
+        let lerpSpeed = 0.08; // INICIALIZADO
 
         function updateShapeTarget() {
+            console.log('Cambiando forma a:', currentShape); // DEBUG
             for (let i = 0; i < particleCount; i++) {
                 const i3 = i * 3;
                 let vec;
@@ -326,6 +326,7 @@
                 targetPositions[i3+1] = vec.y;
                 targetPositions[i3+2] = vec.z;
             }
+            console.log('Primera particula target:', targetPositions[0], targetPositions[1], targetPositions[2]); // DEBUG
         }
 
         updateShapeTarget();
@@ -341,7 +342,6 @@
                 this.zoomSmooth = 1;
                 this.lastClapTime = 0;
                 
-                // Objeto gestos predefinido
                 this.gestures = {
                     swipe: { left: 0, right: 0, up: 0, down: 0 },
                     rotate: { x: 0, y: 0 },
@@ -365,7 +365,7 @@
                     });
                 }
 
-                // Resetear gestos cada frame
+                // Resetear gestos
                 this.gestures.swipe = { left: 0, right: 0, up: 0, down: 0 };
                 this.gestures.rotate = { x: 0, y: 0 };
                 this.gestures.clap = 0;
@@ -390,7 +390,6 @@
                     velocity.subVectors(pos, lastEntry.hands[index].position).divideScalar(deltaTime || 0.016);
                 }
 
-                // Apertura de mano
                 const tips = [4, 8, 12, 16, 20];
                 let totalDist = 0;
                 tips.forEach(tipIdx => {
@@ -413,7 +412,7 @@
             detectGestures() {
                 if (this.hands.length === 0) return;
 
-                // Swipe detection
+                // Swipe
                 const oldest = this.history[this.historyIndex];
                 if (oldest && oldest.hands[0]) {
                     const delta = this.hands[0].position.clone().sub(oldest.hands[0].position);
@@ -433,7 +432,7 @@
                     this.gestures.rotate.y = this.hands[0].velocity.x * 0.005;
                 }
 
-                // Zoom y clap con dos manos
+                // Zoom y clap
                 if (this.hands.length === 2) {
                     const dist = this.hands[0].position.distanceTo(this.hands[1].position);
                     const targetZoom = Math.max(0.3, Math.min(3, dist / 50));
@@ -491,6 +490,7 @@
 
         document.getElementById('shape-selector').addEventListener('change', (e) => {
             currentShape = e.target.value;
+            document.getElementById('forma').textContent = e.target.options[e.target.selectedIndex].text;
             updateShapeTarget();
         });
 
@@ -503,8 +503,9 @@
         });
 
         // === BUCLE DE ANIMACIÓN CORREGIDO ===
-        const clock = new THREE.Clock();
+        const clock = new THREE.Clock(); // ESTO FALTABA EN ALGUNA VERSIÓN
         let rotationX = 0, rotationY = 0, explosionForce = 0, lastExplosion = 0;
+        let frameCount = 0;
 
         function animate() {
             requestAnimationFrame(animate);
@@ -518,8 +519,10 @@
             }
 
             // GESTOS
-            const avgOpenness = gestureTracker.hands[0]?.openness || 0.5;
             const gestures = gestureTracker.gestures;
+            const handCount = gestureTracker.hands.length;
+            const avgOpenness = handCount > 0 ? 
+                gestureTracker.hands.reduce((sum, h) => sum + h.openness, 0) / handCount : 0.5;
             
             // ESCALA
             const targetScale = 0.5 + avgOpenness * gestures.zoom;
@@ -544,8 +547,15 @@
                 const dir = gestures.swipe.left ? -1 : 1;
                 select.selectedIndex = (select.selectedIndex + dir + select.options.length) % select.options.length;
                 currentShape = select.value;
+                document.getElementById('forma').textContent = select.options[select.selectedIndex].text;
                 updateShapeTarget();
                 gestureTracker.gestureCooldown = 0.6;
+                
+                // Feedback visual
+                const indicator = document.getElementById('mode-indicator');
+                indicator.textContent = `Forma: ${select.options[select.selectedIndex].text}`;
+                indicator.classList.add('visible');
+                setTimeout(() => indicator.classList.remove('visible'), 1000);
             }
 
             // ACTUALIZAR PARTÍCULAS
@@ -575,7 +585,7 @@
             renderer.render(scene, camera);
         }
 
-        // === RESPALDO MOUSE/TOUCH ===
+        // === RESPALDO MOUSE ===
         renderer.domElement.addEventListener('mousemove', (e) => {
             if (e.buttons === 1) {
                 rotationY += e.movementX * 0.008;
