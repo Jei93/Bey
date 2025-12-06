@@ -8,7 +8,7 @@
         body { margin: 0; overflow: hidden; background: radial-gradient(circle at center, #0a0a1a, #000); font-family: 'Segoe UI', sans-serif; }
         canvas { display: block; }
         .input_video { display: none; }
-        
+
         #ui-container {
             position: absolute;
             top: 20px;
@@ -75,6 +75,20 @@
             opacity: 0.9;
             transition: opacity 0.3s;
             text-align: center;
+        }
+
+        #gesture-debug {
+            position: absolute;
+            top: 120px;
+            left: 20px;
+            color: #0ff;
+            font-family: monospace;
+            font-size: 0.7rem;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            max-width: 200px;
         }
 
         .gesture-row {
@@ -152,12 +166,13 @@
     <button id="toggle-ui">☰</button>
     <div id="mode-indicator"></div>
     <div id="fps-counter">FPS: <span id="fps">0</span></div>
+    <div id="gesture-debug"></div>
 
     <div id="ui-container">
         <h1>Control Gestual</h1>
         
         <div class="control-group">
-            <label>Forma Base</label>
+            <label>Forma Actual: <span id="forma">Corazón</span></label>
             <select id="shape-selector">
                 <option value="heart">❤️ Corazón</option>
                 <option value="cross">✝️ Cruz</option>
@@ -175,6 +190,11 @@
         <div class="control-group">
             <label>Sensibilidad <span id="sens-value">1.0</span>x</label>
             <input type="range" id="sens-slider" min="0.5" max="2" step="0.1" value="1">
+        </div>
+
+        <div class="control-group">
+            <label>Velocidad Forma <span id="lerp-value">0.12</span></label>
+            <input type="range" id="lerp-slider" min="0.05" max="0.3" step="0.01" value="0.12">
         </div>
 
         <div class="status">
@@ -300,12 +320,12 @@
             return new THREE.Vector3(x * scale, y * scale, z);
         }
 
-        // === ACTUALIZAR FORMA (ESTA VEZ SÍ FUNCIONA) ===
+        // === ACTUALIZAR FORMA (FUNCIONAL) ===
         let currentShape = 'heart';
-        let lerpSpeed = 0.08; // INICIALIZADO
+        let lerpSpeed = 0.12; // MÁS RÁPIDO
 
         function updateShapeTarget() {
-            console.log('Cambiando forma a:', currentShape); // DEBUG
+            console.log('FORMA CAMBIADA A:', currentShape);
             for (let i = 0; i < particleCount; i++) {
                 const i3 = i * 3;
                 let vec;
@@ -326,7 +346,6 @@
                 targetPositions[i3+1] = vec.y;
                 targetPositions[i3+2] = vec.z;
             }
-            console.log('Primera particula target:', targetPositions[0], targetPositions[1], targetPositions[2]); // DEBUG
         }
 
         updateShapeTarget();
@@ -341,20 +360,21 @@
                 this.gestureCooldown = 0;
                 this.zoomSmooth = 1;
                 this.lastClapTime = 0;
+                this.sensitivity = 1;
                 
                 this.gestures = {
                     swipe: { left: 0, right: 0, up: 0, down: 0 },
                     rotate: { x: 0, y: 0 },
-                    pinch: 0,
                     clap: 0,
                     zoom: 1
                 };
             }
 
-            update(results) {
+            update(results, sensitivity = 1) {
                 const now = performance.now();
                 const deltaTime = (now - this.lastTime) / 1000;
                 this.lastTime = now;
+                this.sensitivity = sensitivity;
                 this.gestureCooldown = Math.max(0, this.gestureCooldown - deltaTime);
 
                 this.hands = [];
@@ -390,6 +410,7 @@
                     velocity.subVectors(pos, lastEntry.hands[index].position).divideScalar(deltaTime || 0.016);
                 }
 
+                // Apertura de mano
                 const tips = [4, 8, 12, 16, 20];
                 let totalDist = 0;
                 tips.forEach(tipIdx => {
@@ -416,7 +437,7 @@
                 const oldest = this.history[this.historyIndex];
                 if (oldest && oldest.hands[0]) {
                     const delta = this.hands[0].position.clone().sub(oldest.hands[0].position);
-                    const threshold = 20;
+                    const threshold = 20 / this.sensitivity;
                     
                     if (Math.abs(delta.x) > threshold) {
                         this.gestures.swipe[delta.x < 0 ? 'left' : 'right'] = 1;
@@ -428,8 +449,9 @@
 
                 // Pinch rotate
                 if (this.hands[0].isPinching) {
-                    this.gestures.rotate.x = this.hands[0].velocity.y * 0.005;
-                    this.gestures.rotate.y = this.hands[0].velocity.x * 0.005;
+                    // MÁS SENSIBLE
+                    this.gestures.rotate.x = this.hands[0].velocity.y * 0.01 * this.sensitivity;
+                    this.gestures.rotate.y = this.hands[0].velocity.x * 0.01 * this.sensitivity;
                 }
 
                 // Zoom y clap
@@ -439,9 +461,10 @@
                     this.zoomSmooth += (targetZoom - this.zoomSmooth) * 0.1;
                     this.gestures.zoom = this.zoomSmooth;
 
-                    if (dist < 20 && this.gestureCooldown === 0) {
+                    // CLAP DETECTADO POR DISTANCIA NOMÁS
+                    if (dist < 25 && this.gestureCooldown === 0) {
                         const now = performance.now();
-                        if (now - this.lastClapTime > 1000) {
+                        if (now - this.lastClapTime > 800) {
                             this.gestures.clap = 1;
                             this.lastClapTime = now;
                             this.gestureCooldown = 0.5;
@@ -464,6 +487,15 @@
             document.getElementById('hand-count').textContent = handCount;
             document.getElementById('velocity').textContent = gestureTracker.hands[0]?.velocity.length().toFixed(0) || 0;
             document.getElementById('zoom-level').textContent = gestureTracker.gestures.zoom.toFixed(1);
+            
+            // DEBUG VISUAL
+            const debug = document.getElementById('gesture-debug');
+            const g = gestureTracker.gestures;
+            const active = [];
+            if (g.swipe.left || g.swipe.right) active.push(`SWIPE-${g.swipe.left ? 'LEFT' : 'RIGHT'}`);
+            if (g.clap) active.push('CLAP!');
+            if (g.rotate.x || g.rotate.y) active.push('ROTATE');
+            debug.innerHTML = `<strong>Gestos:</strong><br>${active.join('<br>') || 'Ninguno'}`;
         }
 
         const hands = new Hands({locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
@@ -499,11 +531,17 @@
         });
 
         document.getElementById('sens-slider').addEventListener('input', (e) => {
-            document.getElementById('sens-value').textContent = parseFloat(e.target.value).toFixed(1);
+            gestureTracker.sensitivity = parseFloat(e.target.value);
+            document.getElementById('sens-value').textContent = gestureTracker.sensitivity.toFixed(1);
+        });
+
+        document.getElementById('lerp-slider').addEventListener('input', (e) => {
+            lerpSpeed = parseFloat(e.target.value);
+            document.getElementById('lerp-value').textContent = lerpSpeed.toFixed(2);
         });
 
         // === BUCLE DE ANIMACIÓN CORREGIDO ===
-        const clock = new THREE.Clock(); // ESTO FALTABA EN ALGUNA VERSIÓN
+        const clock = new THREE.Clock();
         let rotationX = 0, rotationY = 0, explosionForce = 0, lastExplosion = 0;
         let frameCount = 0;
 
@@ -525,19 +563,26 @@
                 gestureTracker.hands.reduce((sum, h) => sum + h.openness, 0) / handCount : 0.5;
             
             // ESCALA
-            const targetScale = 0.5 + avgOpenness * gestures.zoom;
-            particles.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1);
+            const targetScale = Math.max(0.3, 0.5 + avgOpenness * gestures.zoom);
+            particles.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.12);
 
-            // ROTACIÓN
-            rotationX += (gestures.rotate.x - rotationX) * 0.15;
-            rotationY += (gestures.rotate.y - rotationY) * 0.15;
+            // ROTACIÓN (más sensible)
+            if (Math.abs(gestures.rotate.x) > 0.01 || Math.abs(gestures.rotate.y) > 0.01) {
+                rotationX += gestures.rotate.x * 0.5;
+                rotationY += gestures.rotate.y * 0.5;
+            }
             particles.rotation.x += rotationX * delta * 30;
             particles.rotation.y += rotationY * delta * 30;
+            rotationX *= 0.95;
+            rotationY *= 0.95;
 
             // EXPLOSIÓN
-            if (gestures.clap && time - lastExplosion > 1) {
+            if (gestures.clap) {
                 explosionForce = 6;
-                lastExplosion = time;
+                const indicator = document.getElementById('mode-indicator');
+                indicator.textContent = '💥 ¡EXPLOSIÓN!';
+                indicator.classList.add('visible');
+                setTimeout(() => indicator.classList.remove('visible'), 800);
             }
             explosionForce *= 0.88;
 
@@ -551,7 +596,6 @@
                 updateShapeTarget();
                 gestureTracker.gestureCooldown = 0.6;
                 
-                // Feedback visual
                 const indicator = document.getElementById('mode-indicator');
                 indicator.textContent = `Forma: ${select.options[select.selectedIndex].text}`;
                 indicator.classList.add('visible');
@@ -560,7 +604,7 @@
 
             // ACTUALIZAR PARTÍCULAS
             const posAttr = geometry.attributes.position;
-            const lerpFactor = Math.min(lerpSpeed * delta * 60, 0.25);
+            const lerpFactor = Math.min(lerpSpeed * delta * 60, 0.3);
             const noiseAmp = explosionForce * 0.3;
             
             for (let i = 0; i < particleCount; i++) {
