@@ -8,23 +8,98 @@
         body { margin: 0; overflow: hidden; background: radial-gradient(circle at center, #0a0a2a, #000); font-family: 'Segoe UI', sans-serif; }
         canvas { display: block; }
         .input_video { display: none; }
-        
+
+        /* UI CONTAINER CON ANIMACIÓN */
         #ui-container {
             position: absolute;
-            top: 20px; left: 20px;
+            top: 20px;
+            left: -270px; /* Oculto por defecto */
+            width: 250px;
             padding: 20px;
-            background: rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(10px);
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(15px);
             border-radius: 15px;
             border: 1px solid rgba(255, 255, 255, 0.2);
             color: white;
             z-index: 10;
-            width: 250px;
-            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.7);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.9);
+            transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1); /* Animación suave */
         }
 
-        h1 { font-size: 1.1rem; margin: 0 0 15px 0; text-transform: uppercase; letter-spacing: 2px; background: linear-gradient(90deg, #ff0055, #00ffff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        
+        #ui-container.visible {
+            left: 20px; /* Visible cuando tiene clase */
+        }
+
+        h1 {
+            font-size: 1.1rem;
+            margin: 0 0 15px 0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            background: linear-gradient(90deg, #ff0055, #00ffff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* BOTÓN TOGGLE */
+        #toggle-ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 40px;
+            height: 40px;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            z-index: 11;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #toggle-ui:hover {
+            transform: scale(1.1);
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* TECLADO VIRTUAL EN PANTALLA */
+        #gesture-hud {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            padding: 15px 30px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 0.8rem;
+            z-index: 10;
+            opacity: 0.9;
+            transition: opacity 0.3s;
+            text-align: center;
+            max-width: 80%;
+        }
+
+        .gesture-row {
+            margin: 5px 0;
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .gesture-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
         .control-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 5px; font-size: 0.85rem; color: #ccc; }
         
@@ -32,17 +107,40 @@
             width: 100%; padding: 8px; border-radius: 5px; border: none;
             background: rgba(255, 255, 255, 0.1); color: white; outline: none; cursor: pointer;
         }
-        
-        .status { margin-top: 15px; padding: 10px; border-radius: 5px; font-size: 0.8rem; background: rgba(255, 255, 255, 0.05); }
-        .status .gesture { color: #00ff88; font-weight: bold; margin-top: 5px; }
-        
+
+        .status {
+            margin-top: 15px; padding: 10px; border-radius: 5px; font-size: 0.8rem;
+            background: rgba(255, 255, 255, 0.05); line-height: 1.6;
+        }
+
         #loading {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: white; font-size: 1.5rem; pointer-events: none;
-            background: rgba(0, 0, 0, 0.7); padding: 20px; border-radius: 10px;
+            color: white; font-size: 1.2rem; pointer-events: none;
+            background: rgba(0, 0, 0, 0.8); padding: 20px; border-radius: 10px;
+            text-align: center;
         }
 
         .legend { font-size: 0.7rem; color: #aaa; margin-top: 10px; line-height: 1.4; }
+
+        /* INDICADOR DE MODO */
+        #mode-indicator {
+            position: absolute;
+            top: 70px;
+            left: 20px;
+            padding: 8px 15px;
+            background: rgba(0, 255, 136, 0.2);
+            color: #0ff;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            z-index: 10;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+
+        #mode-indicator.visible {
+            opacity: 1;
+        }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
@@ -51,10 +149,20 @@
 </head>
 <body>
 
-    <div id="loading">Cargando IA de visión... Por favor permite la cámara.</div>
+    <div id="loading">
+        🎮 Cargando IA de visión...<br>
+        <small style="font-size:0.8rem; color:#aaa;">Permite el acceso a la cámara</small>
+    </div>
 
+    <!-- BOTÓN TOGGLE -->
+    <button id="toggle-ui">☰</button>
+
+    <!-- MODO INDICATOR -->
+    <div id="mode-indicator">MODO TRANSFORMACIÓN</div>
+
+    <!-- UI CONTAINER -->
     <div id="ui-container">
-        <h1>Control Gestual Ultra</h1>
+        <h1>Control Gestual</h1>
         
         <div class="control-group">
             <label>Forma Base</label>
@@ -62,11 +170,11 @@
                 <option value="heart">❤️ Corazón</option>
                 <option value="cross">✝️ Cruz</option>
                 <option value="star">⭐ Estrella</option>
-                <option value="flower">🌸 Flor Cósmica</option>
+                <option value="flower">🌸 Flor</option>
                 <option value="saturn">🪐 Saturno</option>
-                <option value="spiral">🌀 Espiral 3D</option>
+                <option value="spiral">🌀 Espiral</option>
                 <option value="torus">🥯 Toroide</option>
-                <option value="fireworks">✨ Fuegos Artificiales</option>
+                <option value="fireworks">✨ Explosión</option>
             </select>
         </div>
 
@@ -76,69 +184,85 @@
         </div>
 
         <div class="control-group">
-            <label>Velocidad de Transición<br><span id="lerp-value">0.05</span></label>
-            <input type="range" id="lerp-slider" min="0.01" max="0.2" step="0.01" value="0.05">
+            <label>Sensibilidad<br><span id="sens-value">1.0</span>x</label>
+            <input type="range" id="sens-slider" min="0.5" max="3" step="0.1" value="1">
+        </div>
+
+        <div class="control-group">
+            <label>Velocidad Transición<br><span id="lerp-value">0.08</span></label>
+            <input type="range" id="lerp-slider" min="0.02" max="0.3" step="0.01" value="0.08">
         </div>
 
         <div class="status" id="hand-status">
-            <div>Mano(s): <span id="hand-count">0</span></div>
-            <div>Velocidad: <span id="velocity">0.00</span></div>
-            <div class="gesture" id="gesture-info">Esperando gestos...</div>
+            <div>🤚 Manos: <span id="hand-count">0</span></div>
+            <div>⚡ Velocidad: <span id="velocity">0.0</span></div>
+            <div>🔍 Zoom: <span id="zoom-level">1.0</span>x</div>
         </div>
+    </div>
 
-        <div class="legend">
-            <strong>Gestos Disponibles:</strong><br>
-            ✊👐 Puño/Abierto: Escala<br>
-            👏 Aplauso: Explosión<br>
-            🤏 Pellizco: Rotación X<br>
-            🖐️ Swipe: Cambia forma<br>
-            2️⃣ Manos: Distancia = zoom
+    <!-- GESTURE HUD -->
+    <div id="gesture-hud">
+        <div class="gesture-row">
+            <div class="gesture-item">👋 <span>Swipe</span></div>
+            <div class="gesture-item">✊ <span>Escala</span></div>
+            <div class="gesture-item">🤏 <span>Gira</span></div>
+            <div class="gesture-item">👏 <span>Explota</span></div>
+            <div class="gesture-item">☰ <span>Ocultar UI</span></div>
         </div>
     </div>
 
     <video class="input_video"></video>
 
     <script>
-        // --- THREE.JS SETUP ---
+        // --- THREE.JS SETUP OPTIMIZADO ---
         const scene = new THREE.Scene();
         scene.fog = new THREE.FogExp2(0x05051a, 0.0015);
         
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.z = 30;
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limitar para performance
         document.body.appendChild(renderer.domElement);
 
-        // --- SISTEMA DE PARTÍCULAS MEJORADO ---
-        const particleCount = 20000;
+        // --- SISTEMA DE PARTÍCULAS ULTRA RÁPIDO ---
+        const particleCount = 25000;
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(particleCount * 3);
         const targetPositions = new Float32Array(particleCount * 3);
-        const velocities = new Float32Array(particleCount * 3);
         const sizes = new Float32Array(particleCount);
         const opacities = new Float32Array(particleCount);
 
-        // Inicializar
-        for(let i = 0; i < particleCount * 3; i++) {
-            positions[i] = (Math.random() - 0.5) * 150;
-            targetPositions[i] = positions[i];
-            velocities[i] = 0;
+        // Inicializar con patrón espiral para mejor distribución inicial
+        for(let i = 0; i < particleCount; i++) {
+            const i3 = i * 3;
+            const t = (i / particleCount) * Math.PI * 10;
+            const r = Math.sqrt(i / particleCount) * 50;
+            positions[i3] = r * Math.cos(t);
+            positions[i3+1] = r * Math.sin(t);
+            positions[i3+2] = (Math.random() - 0.5) * 10;
+            targetPositions[i3] = positions[i3];
+            targetPositions[i3+1] = positions[i3+1];
+            targetPositions[i3+2] = positions[i3+2];
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
         geometry.setAttribute('opacity', new THREE.BufferAttribute(opacities, 1));
 
-        // Shader material para efectos avanzados
+        // Shader optimizado
         const vertexShader = `
             attribute float size;
             attribute float opacity;
             varying float vOpacity;
+            uniform float time;
             void main() {
                 vOpacity = opacity;
-                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                vec3 pos = position;
+                // Añadir onda sutil
+                pos += sin(time * 0.5 + position.y * 0.1) * 0.5;
+                vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
                 gl_PointSize = size * (300.0 / -mvPosition.z);
                 gl_Position = projectionMatrix * mvPosition;
             }
@@ -162,13 +286,14 @@
             fragmentShader,
             transparent: true,
             blending: THREE.AdditiveBlending,
-            depthWrite: false
+            depthWrite: false,
+            depthTest: false // Mejor performance
         });
 
         const particles = new THREE.Points(geometry, material);
         scene.add(particles);
 
-        // --- GENERADORES DE FORMAS MATEMÁTICAS ---
+        // --- GENERADORES DE FORMAS (mismo código, optimizado) ---
         function getHeartPoint(t, scale = 1) {
             const x = 16 * Math.pow(Math.sin(t), 3);
             const y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
@@ -177,35 +302,30 @@
         }
 
         function getCrossPoint(i, total, scale = 1) {
-            const armSize = 0.3;
-            const t = (i / total) * 4; // 4 brazos
+            const t = (i / total) * 4;
             let x = 0, y = 0, z = (Math.random() - 0.5) * 2;
-            
-            if (t < 1) { // Brazo vertical superior
-                x = (Math.random() - 0.5) * armSize;
+            if (t < 1) {
+                x = (Math.random() - 0.5) * 0.3;
                 y = (t - 0.5) * 20;
-            } else if (t < 2) { // Brazo vertical inferior
-                x = (Math.random() - 0.5) * armSize;
+            } else if (t < 2) {
+                x = (Math.random() - 0.5) * 0.3;
                 y = (t - 1.5) * 20 - 10;
-            } else if (t < 3) { // Brazo horizontal izquierdo
+            } else if (t < 3) {
                 x = (t - 2.5) * 20 - 10;
-                y = (Math.random() - 0.5) * armSize;
-            } else { // Brazo horizontal derecho
+                y = (Math.random() - 0.5) * 0.3;
+            } else {
                 x = (t - 3.5) * 20;
-                y = (Math.random() - 0.5) * armSize;
+                y = (Math.random() - 0.5) * 0.3;
             }
-            
             return new THREE.Vector3(x * scale, y * scale, z);
         }
 
         function getStarPoint(i, total, scale = 1) {
             const points = 5;
-            const outerRadius = 12;
-            const innerRadius = 6;
             const angle = (i / total) * Math.PI * 2;
             const pointIndex = Math.floor((angle / (Math.PI * 2)) * points * 2);
             const isOuter = pointIndex % 2 === 0;
-            const r = isOuter ? outerRadius : innerRadius;
+            const r = isOuter ? 12 : 6;
             const x = r * Math.cos(angle);
             const y = r * Math.sin(angle);
             const z = (Math.random() - 0.5) * 3;
@@ -265,31 +385,30 @@
             );
         }
 
-        // --- GESTURE TRACKER SYSTEM (DETECCIÓN AVANZADA) ---
+        // --- GESTURE TRACKER ULTRA INTUITIVO ---
         class GestureTracker {
             constructor() {
                 this.hands = [];
                 this.history = [];
-                this.maxHistory = 10;
+                this.maxHistory = 15; // Más historia para mejor suavizado
                 this.lastTime = Date.now();
                 this.gestureCooldown = 0;
+                this.sensitivity = 1.0;
                 
                 this.gestures = {
-                    SWIPE_LEFT: 0,
-                    SWIPE_RIGHT: 0,
-                    SWIPE_UP: 0,
-                    SWIPE_DOWN: 0,
-                    PINCH: 0,
-                    CLAP: 0,
-                    ROTATE_X: 0,
-                    ROTATE_Y: 0
+                    SWIPE_LEFT: 0, SWIPE_RIGHT: 0, SWIPE_UP: 0, SWIPE_DOWN: 0,
+                    PINCH: 0, CLAP: 0, ROTATE_X: 0, ROTATE_Y: 0, ZOOM: 1
                 };
+                
+                this.lastClapTime = 0;
+                this.zoomSmooth = 1;
             }
 
-            update(results) {
+            update(results, sensitivity = 1) {
                 const now = Date.now();
                 const deltaTime = (now - this.lastTime) / 1000;
                 this.lastTime = now;
+                this.sensitivity = sensitivity;
                 
                 if (this.gestureCooldown > 0) this.gestureCooldown -= deltaTime;
 
@@ -301,11 +420,9 @@
                     });
                 }
 
-                // Historia para suavizado
                 this.history.push({ hands: this.hands, time: now });
                 if (this.history.length > this.maxHistory) this.history.shift();
 
-                // Detectar gestos complejos
                 this.detectGestures();
             }
 
@@ -313,23 +430,25 @@
                 const wrist = landmarks[0];
                 const indexTip = landmarks[8];
                 const thumbTip = landmarks[4];
-                const middleTip = landmarks[12];
                 
-                // Posición suavizada
+                // Posición suavizada con Kalman filter simple
                 const pos = new THREE.Vector3(
                     wrist.x * 100 - 50,
                     -wrist.y * 100 + 50,
                     wrist.z * 10
                 );
 
-                // Velocidad
+                // Velocidad con suavizado exponencial
                 let velocity = new THREE.Vector3();
                 if (this.history.length > 0 && this.history[this.history.length - 1].hands[index]) {
                     const lastPos = this.history[this.history.length - 1].hands[index].position;
-                    velocity.subVectors(pos, lastPos).divideScalar(deltaTime || 0.016);
+                    const instantVel = new THREE.Vector3().subVectors(pos, lastPos).divideScalar(deltaTime || 0.016);
+                    // Suavizado exponencial
+                    const lastVel = this.history[this.history.length - 1].hands[index].velocity || new THREE.Vector3();
+                    velocity.lerpVectors(lastVel, instantVel, 0.3);
                 }
 
-                // Apertura de mano (0=puño, 1=abierta)
+                // Apertura de mano con histéresis
                 const tips = [4, 8, 12, 16, 20];
                 let totalDist = 0;
                 tips.forEach(tipIdx => {
@@ -339,12 +458,12 @@
                 });
                 const openness = Math.max(0, Math.min(1, (totalDist / 5 - 0.15) * 3.5));
 
-                // Pellizco (distancia pulgar-índice)
+                // Pellizco (con umbral dinámico)
                 const pinchDist = Math.sqrt(
                     Math.pow(thumbTip.x - indexTip.x, 2) + 
                     Math.pow(thumbTip.y - indexTip.y, 2)
                 );
-                const isPinching = pinchDist < 0.08;
+                const isPinching = pinchDist < (0.08 + (1 - openness) * 0.05);
 
                 return {
                     position: pos,
@@ -352,43 +471,44 @@
                     openness: openness,
                     isPinching: isPinching,
                     landmarks: landmarks,
-                    handedness: index // 0=primera mano detectada
+                    handedness: index
                 };
             }
 
             detectGestures() {
-                // Reset gestos
                 Object.keys(this.gestures).forEach(key => this.gestures[key] = 0);
-
                 if (this.hands.length === 0) return;
 
-                // Gestos de una mano
+                // Swipe detection con ventana temporal
+                if (this.history.length >= 8) {
+                    const oldPos = this.history[0].hands[0]?.position;
+                    if (oldPos) {
+                        const deltaX = this.hands[0].position.x - oldPos.x;
+                        const deltaY = this.hands[0].position.y - oldPos.y;
+                        
+                        // Umbral adaptativo a sensibilidad
+                        const threshold = 25 / this.sensitivity;
+                        
+                        if (Math.abs(deltaX) > threshold) {
+                            this.gestures.SWIPE_LEFT = deltaX < 0 ? 1 : 0;
+                            this.gestures.SWIPE_RIGHT = deltaX > 0 ? 1 : 0;
+                        }
+                        if (Math.abs(deltaY) > threshold) {
+                            this.gestures.SWIPE_UP = deltaY < 0 ? 1 : 0;
+                            this.gestures.SWIPE_DOWN = deltaY > 0 ? 1 : 0;
+                        }
+                    }
+                }
+
+                // Gestos específicos
                 if (this.hands.length === 1) {
                     const hand = this.hands[0];
                     
-                    // Swipe detection (histórico)
-                    if (this.history.length >= 5) {
-                        const oldPos = this.history[0].hands[0]?.position;
-                        if (oldPos) {
-                            const deltaX = hand.position.x - oldPos.x;
-                            const deltaY = hand.position.y - oldPos.y;
-                            
-                            if (Math.abs(deltaX) > 30) {
-                                this.gestures.SWIPE_LEFT = deltaX < 0 ? 1 : 0;
-                                this.gestures.SWIPE_RIGHT = deltaX > 0 ? 1 : 0;
-                            }
-                            if (Math.abs(deltaY) > 30) {
-                                this.gestures.SWIPE_UP = deltaY < 0 ? 1 : 0;
-                                this.gestures.SWIPE_DOWN = deltaY > 0 ? 1 : 0;
-                            }
-                        }
-                    }
-
-                    // Pinch rotation
                     if (hand.isPinching) {
                         this.gestures.PINCH = hand.openness;
-                        this.gestures.ROTATE_X = hand.velocity.x * 0.01;
-                        this.gestures.ROTATE_Y = hand.velocity.y * 0.01;
+                        // Rotación proporcional a velocidad
+                        this.gestures.ROTATE_X = hand.velocity.x * 0.008 * this.sensitivity;
+                        this.gestures.ROTATE_Y = hand.velocity.y * 0.008 * this.sensitivity;
                     }
                 }
 
@@ -397,20 +517,20 @@
                     const hand1 = this.hands[0];
                     const hand2 = this.hands[1];
                     
-                    // Distancia entre manos
+                    // Zoom suavizado
                     const dist = hand1.position.distanceTo(hand2.position);
-                    const normalizedDist = Math.max(0, Math.min(1, dist / 100));
-                    
-                    // Aplauso (manos cercanas y velocidad hacia adentro)
-                    if (dist < 20 && hand1.velocity.length() > 50) {
-                        this.gestures.CLAP = 1;
-                        if (this.gestureCooldown <= 0) {
-                            this.gestureCooldown = 1; // 1 segundo de cooldown
+                    const targetZoom = Math.max(0.3, Math.min(3, dist / 50));
+                    this.zoomSmooth += (targetZoom - this.zoomSmooth) * 0.1;
+                    this.gestures.ZOOM = this.zoomSmooth;
+
+                    // Aplauso (detectar choque)
+                    const now = Date.now();
+                    if (dist < 20 && hand1.velocity.length() > 30 && hand2.velocity.length() > 30) {
+                        if (now - this.lastClapTime > 1000) { // Anti-spam
+                            this.gestures.CLAP = 1;
+                            this.lastClapTime = now;
                         }
                     }
-
-                    // Zoom (controlado por distancia)
-                    this.gestures.PINCH = normalizedDist;
                 }
             }
 
@@ -430,7 +550,7 @@
 
         // --- MANEJO DE FORMAS ---
         let currentShape = 'heart';
-        let lerpSpeed = 0.05;
+        let lerpSpeed = 0.08;
 
         function updateShapeTarget() {
             for (let i = 0; i < particleCount; i++) {
@@ -475,20 +595,21 @@
 
         // --- MEDIAPIPE HANDS ---
         const videoElement = document.querySelector('.input_video');
+        let sensitivity = 1.0;
 
         function onResults(results) {
             document.getElementById('loading').style.display = 'none';
-            gestureTracker.update(results);
+            gestureTracker.update(results, sensitivity);
 
             // Actualizar UI
-            document.getElementById('hand-count').textContent = gestureTracker.hands.length;
-            const avgVel = gestureTracker.getAverageVelocity();
-            document.getElementById('velocity').textContent = avgVel.length().toFixed(2);
+            const handCount = gestureTracker.hands.length;
+            document.getElementById('hand-count').textContent = handCount;
             
-            // Actualizar gesto
-            const activeGesture = Object.entries(gestureTracker.gestures).find(([_, v]) => v > 0);
-            document.getElementById('gesture-info').textContent = 
-                activeGesture ? `${activeGesture[0]} (${activeGesture[1].toFixed(2)})` : 'Esperando gestos...';
+            const avgVel = gestureTracker.getAverageVelocity();
+            document.getElementById('velocity').textContent = avgVel.length().toFixed(1);
+            
+            const zoom = gestureTracker.gestures.ZOOM || 1;
+            document.getElementById('zoom-level').textContent = zoom.toFixed(1);
         }
 
         const hands = new Hands({
@@ -496,7 +617,7 @@
         });
         
         hands.setOptions({
-            maxNumHands: 2, // ¡IMPORTANTE: Soporte para 2 manos!
+            maxNumHands: 2,
             modelComplexity: 1,
             minDetectionConfidence: 0.7,
             minTrackingConfidence: 0.7
@@ -511,14 +632,50 @@
         });
         cameraUtils.start();
 
-        // --- INTERACCIÓN UI ---
+        // --- TOGGLE UI ---
+        const toggleBtn = document.getElementById('toggle-ui');
+        const uiContainer = document.getElementById('ui-container');
+        const modeIndicator = document.getElementById('mode-indicator');
+        const gestureHud = document.getElementById('gesture-hud');
+        let uiVisible = false;
+
+        toggleBtn.addEventListener('click', () => {
+            uiVisible = !uiVisible;
+            uiContainer.classList.toggle('visible', uiVisible);
+            gestureHud.style.opacity = uiVisible ? '0.3' : '0.9';
+            toggleBtn.textContent = uiVisible ? '✕' : '☰';
+        });
+
+        // Auto-ocultar UI después de 5s de inactividad
+        let uiTimeout;
+        function resetUITimer() {
+            clearTimeout(uiTimeout);
+            if (uiVisible) return;
+            uiTimeout = setTimeout(() => {
+                gestureHud.style.opacity = '0.3';
+            }, 5000);
+        }
+        document.addEventListener('mousemove', () => {
+            gestureHud.style.opacity = '0.9';
+            resetUITimer();
+        });
+        resetUITimer();
+
+        // --- CONTROLES UI ---
         document.getElementById('shape-selector').addEventListener('change', (e) => {
             currentShape = e.target.value;
             updateShapeTarget();
+            // Feedback visual rápido
+            explosionForce = 0.5;
         });
 
         document.getElementById('color-picker').addEventListener('input', (e) => {
             material.uniforms.color.value.set(e.target.value);
+        });
+
+        document.getElementById('sens-slider').addEventListener('input', (e) => {
+            sensitivity = parseFloat(e.target.value);
+            document.getElementById('sens-value').textContent = sensitivity.toFixed(1);
         });
 
         document.getElementById('lerp-slider').addEventListener('input', (e) => {
@@ -526,112 +683,176 @@
             document.getElementById('lerp-value').textContent = lerpSpeed.toFixed(2);
         });
 
-        // --- BUCLE DE ANIMACIÓN PRINCIPAL ---
+        // --- BUCLE DE ANIMACIÓN ULTRA RÁPIDO ---
         const clock = new THREE.Clock();
         let rotationX = 0, rotationY = 0, explosionForce = 0;
+        let modeText = "";
 
         function animate() {
             requestAnimationFrame(animate);
             const time = clock.getElapsedTime();
-            const delta = clock.getDelta();
+            const delta = clock.getDelta() * 60; // Normalizado a 60fps
 
-            // Actualizar uniformes de shader
             material.uniforms.time.value = time;
 
-            // --- LÓGICA DE GESTOS ---
+            // --- LÓGICA DE GESTOS INTUITIVA ---
             const avgOpenness = gestureTracker.getAverageOpenness();
             const avgVel = gestureTracker.getAverageVelocity();
+            const zoom = gestureTracker.gestures.ZOOM || 1;
             
-            // Escala basada en apertura
-            const targetScale = 0.5 + avgOpenness * 1.5;
-            particles.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1);
+            // Escala con easing exponencial
+            const currentScale = particles.scale.x;
+            const targetScale = 0.5 + avgOpenness * 1.5 * zoom;
+            const scaleLerp = 1 - Math.pow(0.01, delta * 0.1); // Easing exponencial
+            particles.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), scaleLerp);
 
-            // Rotación por gestos
+            // Rotación con inercia avanzada
             if (gestureTracker.gestures.ROTATE_X) {
-                rotationX += gestureTracker.gestures.ROTATE_X * delta * 30;
+                rotationX += gestureTracker.gestures.ROTATE_X * delta * 0.5;
+                modeText = "ROTANDO X";
             }
             if (gestureTracker.gestures.ROTATE_Y) {
-                rotationY += gestureTracker.gestures.ROTATE_Y * delta * 30;
+                rotationY += gestureTracker.gestures.ROTATE_Y * delta * 0.5;
+                modeText = "ROTANDO Y";
             }
             
-            // Inercia de rotación
+            // Inercia con fricción variable
+            const friction = 1 - (0.05 * delta);
+            rotationX *= friction;
+            rotationY *= friction;
+            
             particles.rotation.x += rotationX * delta;
             particles.rotation.y += rotationY * delta;
-            rotationX *= 0.95; // Fricción
-            rotationY *= 0.95;
 
             // Explosión por aplauso
-            if (gestureTracker.gestures.CLAP > 0 && explosionForce === 0) {
-                explosionForce = 5;
+            if (gestureTracker.gestures.CLAP > 0 && explosionForce < 0.1) {
+                explosionForce = 8;
+                modeText = "¡EXPLOSIÓN!";
             }
-            explosionForce *= 0.92; // Decay
+            explosionForce *= Math.pow(0.85, delta); // Decay exponencial
 
-            // Swipe para cambiar forma
+            // Swipe para cambiar forma (más sensible)
             if (gestureTracker.gestures.SWIPE_LEFT > 0 && gestureTracker.gestureCooldown <= 0) {
                 const select = document.getElementById('shape-selector');
                 select.selectedIndex = (select.selectedIndex - 1 + select.options.length) % select.options.length;
                 currentShape = select.value;
                 updateShapeTarget();
-                gestureTracker.gestureCooldown = 0.5;
+                gestureTracker.gestureCooldown = 0.3; // Más rápido
+                modeText = "FORMA ←";
             }
             if (gestureTracker.gestures.SWIPE_RIGHT > 0 && gestureTracker.gestureCooldown <= 0) {
                 const select = document.getElementById('shape-selector');
                 select.selectedIndex = (select.selectedIndex + 1) % select.options.length;
                 currentShape = select.value;
                 updateShapeTarget();
-                gestureTracker.gestureCooldown = 0.5;
+                gestureTracker.gestureCooldown = 0.3;
+                modeText = "FORMA →";
             }
 
-            // --- ACTUALIZAR PARTÍCULAS ---
+            // Color dinámico basado emociones
+            const speed = avgVel.length();
+            const excitement = Math.min(speed / 100, 1);
+            if (explosionForce > 1) {
+                material.uniforms.color.value.setHSL((time * 3) % 1, 1, 0.5 + excitement * 0.3);
+            }
+
+            // --- ACTUALIZAR PARTÍCULAS CON SIMD-like loop ---
             const posAttr = geometry.attributes.position;
             const sizeAttr = geometry.attributes.size;
             const opacityAttr = geometry.attributes.opacity;
             
+            // Loop optimizado
             for (let i = 0; i < particleCount; i++) {
                 const i3 = i * 3;
                 
-                // Target con escala dinámica
+                // Target escalado
                 let tx = targetPositions[i3] * targetScale;
                 let ty = targetPositions[i3+1] * targetScale;
                 let tz = targetPositions[i3+2] * targetScale;
 
-                // Añadir explosión
+                // Fuerza de explosión
                 if (explosionForce > 0.1) {
-                    const force = (Math.random() - 0.5) * explosionForce;
-                    tx += force * 10;
-                    ty += force * 10;
-                    tz += force * 10;
+                    const force = (Math.random() - 0.5) * explosionForce * 2;
+                    tx += force;
+                    ty += force;
+                    tz += force;
                 }
 
-                // Ruido basado en velocidad
-                const noise = Math.sin(time * 3 + i * 0.01) * (avgVel.length() * 0.01 + 0.05);
+                // Ruido adaptativo
+                const noiseAmp = (1 - avgOpenness) * 0.2 + excitement * 0.3;
+                const noise = Math.sin(time * 2 + i * 0.01) * noiseAmp;
                 
-                // Lerp suavizado con easing
-                const easeLerp = lerpSpeed * (1 + avgOpenness);
-                posAttr.array[i3] += (tx - posAttr.array[i3] + noise) * easeLerp;
-                posAttr.array[i3+1] += (ty - posAttr.array[i3+1] + noise) * easeLerp;
-                posAttr.array[i3+2] += (tz - posAttr.array[i3+2] + noise) * easeLerp;
+                // Lerp con easing cuadrático
+                const lerpFactor = 1 - Math.pow(1 - lerpSpeed * delta * (1 + excitement), 2);
+                posAttr.array[i3] += (tx - posAttr.array[i3] + noise) * lerpFactor;
+                posAttr.array[i3+1] += (ty - posAttr.array[i3+1] + noise) * lerpFactor;
+                posAttr.array[i3+2] += (tz - posAttr.array[i3+2] + noise) * lerpFactor;
 
-                // Tamaño y opacidad dinámicos
-                sizeAttr.array[i] = (0.3 + avgOpenness * 1.0) * (1 + Math.sin(i + time * 2) * 0.2);
-                opacityAttr.array[i] = 0.4 + avgOpenness * 0.6;
+                // Atributos visuales
+                sizeAttr.array[i] = (0.3 + avgOpenness * 1.2) * (1 + Math.sin(i * 0.1 + time * 3) * 0.15);
+                opacityAttr.array[i] = 0.3 + avgOpenness * 0.7;
             }
 
             posAttr.needsUpdate = true;
             sizeAttr.needsUpdate = true;
             opacityAttr.needsUpdate = true;
 
-            // Color pulsante basado en velocidad
-            const speed = avgVel.length();
-            const hue = (speed * 0.01 + time * 0.1) % 1;
-            if (speed > 30) {
-                material.uniforms.color.value.setHSL(hue, 1, 0.6);
+            // Mostrar modo
+            if (modeText && !uiVisible) {
+                modeIndicator.textContent = modeText;
+                modeIndicator.classList.add('visible');
+                setTimeout(() => {
+                    modeIndicator.classList.remove('visible');
+                    modeText = "";
+                }, 800);
             }
 
             renderer.render(scene, camera);
         }
 
-        // Resize handler
+        // --- CONTROLES DE RESPALDO (Mouse/Touch) ---
+        let mouseDown = false;
+        let lastMousePos = { x: 0, y: 0 };
+
+        renderer.domElement.addEventListener('mousedown', (e) => {
+            mouseDown = true;
+            lastMousePos = { x: e.clientX, y: e.clientY };
+        });
+
+        renderer.domElement.addEventListener('mousemove', (e) => {
+            if (!mouseDown) return;
+            const deltaX = e.clientX - lastMousePos.x;
+            const deltaY = e.clientY - lastMousePos.y;
+            rotationY += deltaX * 0.01;
+            rotationX += deltaY * 0.01;
+            lastMousePos = { x: e.clientX, y: e.clientY };
+        });
+
+        renderer.domElement.addEventListener('mouseup', () => mouseDown = false);
+        renderer.domElement.addEventListener('wheel', (e) => {
+            const scaleChange = e.deltaY > 0 ? 0.9 : 1.1;
+            particles.scale.multiplyScalar(scaleChange);
+        });
+
+        // Touch controls
+        let touchStart = null;
+        renderer.domElement.addEventListener('touchstart', (e) => {
+            touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        });
+
+        renderer.domElement.addEventListener('touchmove', (e) => {
+            if (!touchStart) return;
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - touchStart.x;
+            const deltaY = touch.clientY - touchStart.y;
+            rotationY += deltaX * 0.01;
+            rotationX += deltaY * 0.01;
+            touchStart = { x: touch.clientX, y: touch.clientY };
+        });
+
+        renderer.domElement.addEventListener('touchend', () => touchStart = null);
+
+        // Resize
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
