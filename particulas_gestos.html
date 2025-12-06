@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Partículas Interactivas con Gestos</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Segoe UI', sans-serif; }
+        canvas { display: block; }
+
+        /* Contenedor de video oculto (solo para procesamiento) */
+        .input_video { display: none; }
+
+        /* UI Overlay */
+        #ui-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            z-index: 10;
+            width: 220px;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        h1 { font-size: 1.2rem; margin: 0 0 15px 0; text-transform: uppercase; letter-spacing: 2px; }
+
+        .control-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-size: 0.9rem; color: #ccc; }
+
+        select, input[type="color"] {
+            width: 100%;
+            padding: 8px;
+            border-radius: 5px;
+            border: none;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .status {
+            margin-top: 15px;
+            font-size: 0.8rem;
+            color: #00ff88;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 1.5rem;
+            pointer-events: none;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+    <div id="loading">Cargando IA de visión... Por favor permite la cámara.</div>
+
+    <div id="ui-container">
+        <h1>Control Gestual</h1>
+
+        <div class="control-group">
+            <label>Forma</label>
+            <select id="shape-selector">
+                <option value="heart">Corazón</option>
+                <option value="flower">Flor Cósmica</option>
+                <option value="saturn">Saturno</option>
+                <option value="fireworks">Fuegos Artificiales</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>Color Base</label>
+            <input type="color" id="color-picker" value="#ff0055">
+        </div>
+
+        <div class="status" id="hand-status">Esperando mano...</div>
+        <div style="font-size: 0.7rem; color: #aaa; margin-top:5px;">
+            Abre la mano: Expandir<br>
+            Cierra el puño: Contraer
+        </div>
+    </div>
+
+    <video class="input_video"></video>
+
+    <script>
+        // --- CONFIGURACIÓN THREE.JS ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050505, 0.002);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 30;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // --- SISTEMA DE PARTÍCULAS ---
+        const particleCount = 15000;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const targetPositions = new Float32Array(particleCount * 3); // A donde quieren ir
+
+        // Inicializar posiciones aleatorias
+        for(let i = 0; i < particleCount * 3; i++) {
+            positions[i] = (Math.random() - 0.5) * 100;
+            targetPositions[i] = positions[i];
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+        // Crear textura de partícula programáticamente (círculo suave)
+        const getTexture = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 32; canvas.height = 32;
+            const context = canvas.getContext('2d');
+            const gradient = context.createRadialGradient(16, 16, 0, 16, 16, 16);
+            gradient.addColorStop(0, 'rgba(255,255,255,1)');
+            gradient.addColorStop(1, 'rgba(0,0,0,0)');
+            context.fillStyle = gradient;
+            context.fillRect(0, 0, 32, 32);
+            const texture = new THREE.Texture(canvas);
+            texture.needsUpdate = true;
+            return texture;
+        };
+
+        const material = new THREE.PointsMaterial({
+            size: 0.5,
+            map: getTexture(),
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            vertexColors: false,
+            color: 0xff0055
+        });
+
+        const particles = new THREE.Points(geometry, material);
+        scene.add(particles);
+
+        // --- GENERADORES DE FORMAS MATEMÁTICAS ---
+        // Funciones para calcular coordenadas objetivo
+
+        function getHeartPoint(t, scale = 1) {
+            // Ecuaciones paramétricas del corazón
+            const x = 16 * Math.pow(Math.sin(t), 3);
+            const y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+            const z = (Math.random() - 0.5) * 5; // Grosor
+            return new THREE.Vector3(x * scale, y * scale, z);
+        }
+
+        function getFlowerPoint(u, v, scale = 1) {
+            // Flor basada en coordenadas polares/esféricas modificadas
+            const r = 10 + 5 * Math.cos(5 * u);
+            const x = r * Math.sin(u) * Math.cos(v);
+            const y = r * Math.sin(u) * Math.sin(v);
+            const z = (r * Math.cos(u)) * 0.5;
+            return new THREE.Vector3(x * scale, y * scale, z);
+        }
+
+        function getSaturnPoint(i, total, scale = 1) {
+            // 70% Esfera, 30% Anillo
+            if (i < total * 0.7) {
+                // Esfera
+                const phi = Math.acos(-1 + (2 * i) / (total * 0.7));
+                const theta = Math.sqrt((total * 0.7) * Math.PI) * phi;
+                const r = 8;
+                return new THREE.Vector3(
+                    r * Math.cos(theta) * Math.sin(phi),
+                    r * Math.sin(theta) * Math.sin(phi),
+                    r * Math.cos(phi)
+                );
+            } else {
+                // Anillo
+                const angle = Math.random() * Math.PI * 2;
+                const r = 12 + Math.random() * 6; // Radio entre 12 y 18
+                return new THREE.Vector3(
+                    r * Math.cos(angle),
+                    (Math.random()-0.5), // Plano
+                    r * Math.sin(angle)
+                );
+            }
+        }
+
+        function getFireworksPoint(scale = 1) {
+            // Explosión esférica aleatoria
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos((Math.random() * 2) - 1);
+            const r = Math.random() * 20 * scale; 
+            return new THREE.Vector3(
+                r * Math.sin(phi) * Math.cos(theta),
+                r * Math.sin(phi) * Math.sin(theta),
+                r * Math.cos(phi)
+            );
+        }
+
+        // Función para actualizar la forma objetivo
+        let currentShape = 'heart';
+        function updateShapeTarget() {
+            for (let i = 0; i < particleCount; i++) {
+                let vec;
+                const i3 = i * 3;
+
+                if (currentShape === 'heart') {
+                    // Mapeamos i a un ángulo t
+                    const t = (i / particleCount) * Math.PI * 20; 
+                    vec = getHeartPoint(t, 0.8);
+                } else if (currentShape === 'flower') {
+                    const u = Math.random() * Math.PI;
+                    const v = Math.random() * Math.PI * 2;
+                    vec = getFlowerPoint(u, v, 1.2);
+                } else if (currentShape === 'saturn') {
+                    vec = getSaturnPoint(i, particleCount);
+                    // Rotar un poco saturno para verlo mejor
+                    vec.applyAxisAngle(new THREE.Vector3(1,0,1).normalize(), 0.5);
+                } else {
+                    vec = getFireworksPoint();
+                }
+
+                targetPositions[i3] = vec.x;
+                targetPositions[i3+1] = vec.y;
+                targetPositions[i3+2] = vec.z;
+            }
+        }
+
+        // Llamada inicial
+        updateShapeTarget();
+
+        // --- LÓGICA DE MEDIAPIPE (MANOS) ---
+        const videoElement = document.getElementsByClassName('input_video')[0];
+        let handOpenness = 0.5; // 0 = cerrado, 1 = abierto
+        let isHandDetected = false;
+
+        function onResults(results) {
+            document.getElementById('loading').style.display = 'none';
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                isHandDetected = true;
+                const landmarks = results.multiHandLandmarks[0];
+
+                // Calcular apertura de la mano
+                // Distancia promedio de las puntas de los dedos a la muñeca (landmark 0)
+                const wrist = landmarks[0];
+                const tips = [4, 8, 12, 16, 20]; // Índices de puntas de dedos
+                let totalDist = 0;
+
+                tips.forEach(tipIdx => {
+                    const tip = landmarks[tipIdx];
+                    const d = Math.sqrt(
+                        Math.pow(tip.x - wrist.x, 2) + 
+                        Math.pow(tip.y - wrist.y, 2)
+                    );
+                    totalDist += d;
+                });
+
+                const avgDist = totalDist / 5;
+                // Calibración aproximada: puño ~0.15, abierto ~0.35+
+                // Normalizamos entre 0 y 1
+                let val = (avgDist - 0.15) * 3.5; 
+                val = Math.max(0, Math.min(1, val)); // Clamp 0-1
+
+                // Suavizado (Lerp) para evitar jitter
+                handOpenness += (val - handOpenness) * 0.1;
+
+                document.getElementById('hand-status').innerText = `Mano detectada: ${Math.round(handOpenness * 100)}% abierta`;
+                document.getElementById('hand-status').style.color = '#00ff88';
+            } else {
+                isHandDetected = false;
+                // Si no hay mano, volver a estado neutro
+                handOpenness += (0.5 - handOpenness) * 0.05;
+                document.getElementById('hand-status').innerText = "Esperando mano...";
+                document.getElementById('hand-status').style.color = '#ffaa00';
+            }
+        }
+
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        const cameraUtils = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 640,
+            height: 480
+        });
+        cameraUtils.start();
+
+        // --- INTERACCIÓN UI ---
+        document.getElementById('shape-selector').addEventListener('change', (e) => {
+            currentShape = e.target.value;
+            updateShapeTarget();
+        });
+
+        document.getElementById('color-picker').addEventListener('input', (e) => {
+            material.color.set(e.target.value);
+        });
+
+        // --- BUCLE DE ANIMACIÓN ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = clock.getElapsedTime();
+            const delta = clock.getDelta();
+
+            // Rotación general del sistema
+            particles.rotation.y += 0.002;
+
+            // Factor de escala basado en la mano (0.5 es neutro)
+            // Puño (0) -> Sistema pequeño (0.5x)
+            // Abierto (1) -> Sistema grande (1.5x)
+            const scaleFactor = 0.5 + handOpenness; 
+
+            // Actualizar posiciones de partículas
+            const posAttr = geometry.attributes.position;
+
+            for (let i = 0; i < particleCount; i++) {
+                const i3 = i * 3;
+
+                // Posición Objetivo Base
+                let tx = targetPositions[i3];
+                let ty = targetPositions[i3+1];
+                let tz = targetPositions[i3+2];
+
+                // Aplicar escala de mano a la posición objetivo
+                tx *= scaleFactor;
+                ty *= scaleFactor;
+                tz *= scaleFactor;
+
+                // Añadir "ruido" o movimiento vivo
+                // Si la mano está abierta, las partículas vibran más
+                const noise = Math.sin(time * 2 + i) * (handOpenness * 0.2);
+
+                // Interpolación lineal (Lerp) hacia el objetivo para suavidad
+                // Velocidad de morphing = 0.05
+                posAttr.array[i3] += (tx - posAttr.array[i3] + noise) * 0.05;
+                posAttr.array[i3+1] += (ty - posAttr.array[i3+1] + noise) * 0.05;
+                posAttr.array[i3+2] += (tz - posAttr.array[i3+2] + noise) * 0.05;
+            }
+
+            posAttr.needsUpdate = true;
+
+            // Efecto de pulso si se selecciona Corazón
+            if(currentShape === 'heart') {
+                const pulse = 1 + Math.sin(time * 3) * 0.05;
+                particles.scale.set(pulse, pulse, pulse);
+            } else {
+                particles.scale.set(1, 1, 1);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Manejo de resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+
+    </script>
+</body>
+</html>
