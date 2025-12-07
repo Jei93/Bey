@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Partículas 3D con Control de Gestos</title>
+    <title>Sistema de Partículas 3D con Control de Gestos Avanzado</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #111; }
         canvas { display: block; }
@@ -18,14 +18,15 @@
         .info-overlay {
             position: absolute;
             top: 10px;
-            right: 25px;
+            right: 10px;
             color: white;
             font-family: sans-serif;
             font-size: 14px;
-            z-index: 100;
-            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000; /* Aseguramos que esté sobre todo */
+            background: rgba(0, 0, 0, 0.6);
             padding: 10px;
             border-radius: 5px;
+            pointer-events: none; /* No bloquear clicks en el canvas */
         }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -39,16 +40,16 @@
     <div class="info-overlay">
         **Instrucciones:**
         <br>
-        1. **Control de Distancia (Escala):** Mueve la mano hacia o lejos de la cámara.
+        1. **Escala/Zoom:** Mueve la mano hacia o lejos de la cámara.
         <br>
-        2. **Disparador (Efecto):** Cierra el puño para activar la forma/efecto (ej. encender el corazón, disparar el cohete/fuego artificial).
+        2. **Disparador:** **Cierra el puño** para activar el efecto (ej. explosión).
     </div>
 
     <script>
         // --- 1. Variables Globales y Configuración ---
         let scene, camera, renderer, particles, geometry;
         let particleCount = 10000;
-        let positions, velocities, colors;
+        let positions, velocities, colors, initialPositions; // Añadimos initialPositions para guardar la forma
         let clock = new THREE.Clock();
 
         // Control de MediaPipe
@@ -58,13 +59,14 @@
         // Gestos
         let isHandClosed = false;
         let isHandDetected = false;
-        let handZ = 0; // Profundidad de la mano (para escala)
+        let handZ = 0;
+        let isExploding = false; // Control de estado para fuegos artificiales
 
         // Configuración de la interfaz (Tweakpane)
         const CONFIG = {
             shape: 'corazon',
             color: '#FF00AA',
-            speed: 0.05,
+            speedMultiplier: 0.1,
             particleSize: 0.5,
             effectActive: false,
         };
@@ -72,28 +74,17 @@
         // --- 2. Inicialización de Three.js ---
 
         function initThree() {
-            // Escena
             scene = new THREE.Scene();
-
-            // Cámara (Configuración para coincidir con la perspectiva de la cámara)
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.z = 25;
 
-            // Renderizador
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.getElementById('container').appendChild(renderer.domElement);
 
-            // Inicializar partículas
             initParticles();
-
-            // Interfaz
             initGUI();
-
-            // Manejo de redimensionamiento
             window.addEventListener('resize', onWindowResize, false);
-
-            // Iniciar el bucle de animación
             animate();
         }
 
@@ -109,17 +100,12 @@
         function generateHeartPositions(count, radius = 10) {
             const tempPositions = [];
             for (let i = 0; i < count; i++) {
-                // Parámetro 't' de 0 a 2*PI
                 const t = (i / count) * 2 * Math.PI;
-                // Ecuaciones de la Cardioide para el corazón
                 const x = radius * (16 * Math.sin(t) ** 3) / 10;
                 const y = -radius * (
-                    13 * Math.cos(t) -
-                    5 * Math.cos(2 * t) -
-                    2 * Math.cos(3 * t) -
-                    Math.cos(4 * t)
+                    13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)
                 ) / 10;
-                const z = 0; // Lo mantenemos 2D, Three.js lo mapea a 3D
+                const z = 0;
                 tempPositions.push(x, y, z);
             }
             return tempPositions;
@@ -130,7 +116,7 @@
             const tempPositions = [];
             for (let i = 0; i < count; i++) {
                 const t = (i / count) * 2 * Math.PI;
-                const r = radius * Math.cos(petals * t); // Ecuación de la rosa
+                const r = radius * Math.cos(petals * t);
                 const x = r * Math.cos(t);
                 const y = r * Math.sin(t);
                 const z = 0;
@@ -142,7 +128,6 @@
         // Función de utilidad para generar la forma de Saturno (Anillo y Esfera)
         function generateSaturnPositions(count, radius = 10) {
             const tempPositions = [];
-            // Mitad para el anillo, mitad para el planeta
             const countHalf = Math.floor(count / 2);
 
             // Planeta (Esfera)
@@ -166,7 +151,6 @@
 
                 const x = r * Math.cos(theta);
                 const y = r * Math.sin(theta);
-                // Distribución aleatoria muy pequeña en Z
                 const z = (Math.random() - 0.5) * 0.2;
                 tempPositions.push(x, y, z);
             }
@@ -176,6 +160,7 @@
         // Función para cambiar la forma de las partículas
         function changeShape(shape) {
             const newPositions = [];
+            isExploding = false; // Reiniciar estado de explosión
 
             switch (shape) {
                 case 'corazon':
@@ -188,9 +173,9 @@
                     newPositions.push(...generateSaturnPositions(particleCount));
                     break;
                 case 'fuegosartificiales':
-                    // Para fuegos artificiales, se inicia en un punto, la forma se crea en el 'animate'
+                    // Para fuegos artificiales, se inicia en un punto (base)
                     for (let i = 0; i < particleCount; i++) {
-                        newPositions.push(0, 0, 0); // Todas en el centro
+                        newPositions.push(0, -10, 0); // Todas abajo, listas para subir
                     }
                     break;
                 case 'esfera':
@@ -208,37 +193,46 @@
                     }
             }
 
-            // Actualizar la geometría
-            positions = new Float32Array(newPositions);
+            // Almacenar las posiciones iniciales (la forma)
+            initialPositions = new Float32Array(newPositions);
+
+            // Copiar las posiciones iniciales a las posiciones dinámicas
+            positions = new Float32Array(initialPositions);
             geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
             geometry.attributes.position.needsUpdate = true;
 
-            // Reiniciar las velocidades para que no haya artefactos de la forma anterior
+            // Reiniciar velocidades a valores sutiles
             for (let i = 0; i < particleCount * 3; i += 3) {
                 velocities[i] = (Math.random() - 0.5) * 0.01;
                 velocities[i + 1] = (Math.random() - 0.5) * 0.01;
                 velocities[i + 2] = (Math.random() - 0.5) * 0.01;
             }
+
+            // Aplicar color
+            updateColors(CONFIG.color);
         }
+
+        // Función para actualizar los colores de todas las partículas
+        function updateColors(hexColor) {
+            const newColor = new THREE.Color(hexColor);
+            for (let i = 0; i < particleCount * 3; i += 3) {
+                colors[i] = newColor.r;
+                colors[i + 1] = newColor.g;
+                colors[i + 2] = newColor.b;
+            }
+            geometry.attributes.color.needsUpdate = true;
+        }
+
 
         // Inicializador principal de partículas
         function initParticles() {
             geometry = new THREE.BufferGeometry();
-            positions = new Float32Array(particleCount * 3);
             velocities = new Float32Array(particleCount * 3);
             colors = new Float32Array(particleCount * 3);
 
-            // Inicializar colores (simplemente blanco al inicio)
-            const color = new THREE.Color(CONFIG.color);
-            for (let i = 0; i < particleCount * 3; i += 3) {
-                colors[i] = color.r;
-                colors[i + 1] = color.g;
-                colors[i + 2] = color.b;
-
-                // Inicializar velocidades aleatorias muy bajas (para un movimiento sutil)
-                velocities[i] = (Math.random() - 0.5) * 0.01;
-                velocities[i + 1] = (Math.random() - 0.5) * 0.01;
-                velocities[i + 2] = (Math.random() - 0.5) * 0.01;
+            // Inicializar partículas
+            for (let i = 0; i < particleCount * 3; i++) {
+                velocities[i] = 0;
             }
 
             geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
@@ -249,59 +243,56 @@
             // Material
             const material = new THREE.PointsMaterial({
                 size: CONFIG.particleSize,
-                vertexColors: true, // Habilitar el uso de los colores de los vértices
+                vertexColors: true,
                 transparent: true,
-                blending: THREE.AdditiveBlending, // Efecto de brillo/superposición
-                depthWrite: false, // Optimización
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
             });
 
             particles = new THREE.Points(geometry, material);
             scene.add(particles);
 
-            // Aplicar el tamaño inicial
             particles.material.size = CONFIG.particleSize;
         }
 
         // --- 4. Interfaz de Usuario (Tweakpane) ---
 
         function initGUI() {
-            const pane = new Tweakpane.Pane({ title: 'Controles de Partículas' });
+            const pane = new Tweakpane.Pane({ title: 'Controles 3D' });
 
             // Carpeta de Forma
-            const shapeFolder = pane.addFolder({ title: 'Forma de la Partícula' });
+            const shapeFolder = pane.addFolder({ title: 'Plantillas' });
             shapeFolder.addBinding(CONFIG, 'shape', {
                 options: {
                     'Corazón ❤️': 'corazon',
                     'Flor 🌸': 'flor',
                     'Saturno 🪐': 'saturno',
                     'Fuegos Artificiales 🎇': 'fuegosartificiales',
-                    'Esfera (Aleatorio) 🌐': 'esfera',
+                    'Esfera 🌐': 'esfera',
                 },
             }).on('change', (ev) => {
                 changeShape(ev.value);
             });
 
             // Carpeta de Estilo
-            const styleFolder = pane.addFolder({ title: 'Estilo' });
+            const styleFolder = pane.addFolder({ title: 'Estilo y Velocidad' });
             styleFolder.addBinding(CONFIG, 'color', { view: 'color' }).on('change', (ev) => {
-                const newColor = new THREE.Color(ev.value);
-                // Actualizar el color de todas las partículas
-                for (let i = 0; i < particleCount * 3; i += 3) {
-                    colors[i] = newColor.r;
-                    colors[i + 1] = newColor.g;
-                    colors[i + 2] = newColor.b;
-                }
-                geometry.attributes.color.needsUpdate = true;
+                updateColors(ev.value);
             });
 
             styleFolder.addBinding(CONFIG, 'particleSize', { label: 'Tamaño', min: 0.1, max: 2.0 }).on('change', (ev) => {
                 particles.material.size = ev.value;
+            });
+
+            styleFolder.addBinding(CONFIG, 'speedMultiplier', { label: 'Velocidad', min: 0.01, max: 0.5 }).on('change', (ev) => {
+                // Ajuste de velocidad base
             });
         }
 
         // --- 5. Lógica de MediaPipe (Detección de Gestos) ---
 
         function initMediaPipe() {
+            // Se usa la ruta CDN completa para garantizar la carga en GitHub Pages
             hands = new Hands({
                 locateFile: (file) => {
                     return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${file}`;
@@ -309,22 +300,21 @@
             });
 
             hands.setOptions({
-                maxNumHands: 2,
-                modelComplexity: 1, // 1 es un buen equilibrio para precisión y rendimiento
-                minDetectionConfidence: 0.5,
-                minTrackingConfidence: 0.5
+                maxNumHands: 1, // Una mano es suficiente para el control
+                modelComplexity: 1,
+                minDetectionConfidence: 0.7, // Aumentamos la confianza
+                minTrackingConfidence: 0.7
             });
 
             hands.onResults(onResults);
 
-            // Acceso a la cámara
             if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
                 cameraUtil = new Camera(videoElement, {
                     onFrame: async () => {
                         await hands.send({ image: videoElement });
                     },
-                    width: 1280, // Resolución más alta para mejor detección
-                    height: 720
+                    width: 640,
+                    height: 480
                 });
                 cameraUtil.start();
             } else {
@@ -336,53 +326,41 @@
             isHandDetected = results.multiHandLandmarks && results.multiHandLandmarks.length > 0;
 
             if (isHandDetected) {
-                const landmarks = results.multiHandLandmarks[0]; // Usamos la primera mano detectada
+                const landmarks = results.multiHandLandmarks[0];
 
                 // **Control de Profundidad (Z) para la Escala**
-                // El punto 0 (muñeca) o 9 (centro) es bueno para la profundidad
-                // Normalizado de 0 (cámara) a 1 (lejos)
-                // Invertimos el eje Z para que al acercar la mano (Z bajo) las partículas crezcan.
+                // landmarks[9].z (centro del nudillo)
                 handZ = 1 - landmarks[9].z;
-                // Mapeo simple: ajusta la sensibilidad
-                const scaleFactor = 0.5 + handZ * 2.0; // Rango de escala 0.5 a 2.5
+                const scaleFactor = 0.5 + handZ * 2.5; // Rango de escala 0.5 a 3.0
                 particles.material.size = CONFIG.particleSize * scaleFactor;
 
                 // **Control de Cierre de Mano (Puño) para el Disparador**
-                // Un puño se detecta cuando la punta de los dedos (8, 12, 16, 20) está cerca del nudillo (5, 9, 13, 17)
-                const tipIndexes = [8, 12, 16, 20]; // Índice, Medio, Anular, Meñique (puntas)
+                const tipIndexes = [8, 12, 16, 20]; // Puntas de dedos
                 const knuckleIndexes = [5, 9, 13, 17]; // Nudillos
                 let closedCount = 0;
 
                 for (let i = 0; i < tipIndexes.length; i++) {
-                    // Distancia Euclidea simple entre la punta y el nudillo correspondiente.
-                    // No usamos Math.hypot porque los landmarks son 3D.
                     const distSq = (landmarks[tipIndexes[i]].x - landmarks[knuckleIndexes[i]].x) ** 2 +
-                                   (landmarks[tipIndexes[i]].y - landmarks[knuckleIndexes[i]].y) ** 2 +
-                                   (landmarks[tipIndexes[i]].z - landmarks[knuckleIndexes[i]].z) ** 2;
+                                   (landmarks[tipIndexes[i]].y - landmarks[knuckleIndexes[i]].y) ** 2;
 
-                    // Umbral de distancia (debe ser muy bajo, ya que es la distancia normalizada [0, 1])
-                    if (distSq < 0.005) { // Este valor puede requerir calibración
+                    if (distSq < 0.003) { // Umbral ajustado para alta sensibilidad al puño
                         closedCount++;
                     }
                 }
 
-                // Si la mayoría de los dedos están cerca, consideramos que la mano está cerrada.
                 const newIsHandClosed = closedCount >= 3;
 
-                // **Lógica del Disparador (Puño CERRADO -> Activar Efecto)**
+                // Lógica del Disparador (Transición de ABIERTO a CERRADO)
                 if (newIsHandClosed && !isHandClosed) {
-                    // Solo se activa una vez al pasar de ABIERTO a CERRADO
                     CONFIG.effectActive = true;
-                } else if (!newIsHandClosed && isHandClosed) {
-                    // Solo se desactiva una vez al pasar de CERRADO a ABIERTO
-                    CONFIG.effectActive = false;
+                } else {
+                    CONFIG.effectActive = false; // Desactivar efecto tan pronto como se abra
                 }
                 isHandClosed = newIsHandClosed;
 
             } else {
-                // Si la mano no es detectada, restablecer a tamaño normal
                 particles.material.size = CONFIG.particleSize;
-                CONFIG.effectActive = false; // Detener efecto si la mano desaparece
+                CONFIG.effectActive = false;
             }
         }
 
@@ -391,67 +369,102 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            const delta = clock.getDelta(); // Tiempo transcurrido para una animación suave
+            const delta = clock.getDelta();
 
-            // Movimiento/Física Base de las partículas
             for (let i = 0; i < particleCount * 3; i += 3) {
-                // Posiciones actuales
                 let x = positions[i];
                 let y = positions[i + 1];
                 let z = positions[i + 2];
 
-                // Velocidades actuales
                 let vx = velocities[i];
                 let vy = velocities[i + 1];
                 let vz = velocities[i + 2];
 
-                // **Lógica de Efectos (Gestos)**
+                // **Lógica de Fuegos Artificiales**
+                if (CONFIG.shape === 'fuegosartificiales') {
 
-                if (CONFIG.shape === 'fuegosartificiales' && CONFIG.effectActive) {
-                    // 1. Inicializar la explosión una vez
-                    if (y === 0 && vx === 0) { // Si están quietas en el centro (solo la primera vez)
-                         // Impulso aleatorio fuerte
-                         const speed = 5 + Math.random() * 5;
-                         vx = (Math.random() - 0.5) * speed;
-                         vy = (Math.random() - 0.5) * speed;
-                         vz = (Math.random() - 0.5) * speed;
-                    }
-                    
-                    // 2. Aplicar la gravedad y desvanecimiento
-                    vy -= 9.8 * delta * 0.1; // Gravedad simulada (aceleración hacia abajo)
-                    
-                    // 3. Reducir la velocidad por fricción
-                    vx *= 0.98;
-                    vy *= 0.98;
-                    vz *= 0.98;
-
-                    // Reiniciar si caen por debajo de la 'pantalla'
-                    if (y < -30) {
-                        x = 0; y = 0; z = 0; // Volver al centro
-                        vx = 0; vy = 0; vz = 0; // Detener
-                        // Desactivar el efecto para que se necesite otro gesto
-                        // (Nota: CONFIG.effectActive se controla en onResults, se mantiene)
+                    // Disparador de la Explosión
+                    if (CONFIG.effectActive && !isExploding) {
+                        // Iniciar el cohete
+                        if (y === initialPositions[i+1] || y < -5) { // Si están en la base o ya cayeron
+                            // Lanzar hacia arriba con una velocidad inicial alta
+                            vy = 30 + Math.random() * 10;
+                            isExploding = true; // Activar el estado de lanzamiento
+                        }
                     }
 
-                } else {
-                    // Movimiento sutil de 'vida' (para todas las demás formas)
-                    const lifeSpeed = 0.05;
-                    const time = clock.elapsedTime * lifeSpeed;
+                    // En vuelo (antes de la explosión)
+                    if (isExploding && vy > 0) {
+                        vy -= 9.8 * delta * 0.1; // Gravedad simulada
+                    }
 
-                    // Posición base
+                    // Momento de la explosión (Cuando la velocidad Y es cercana a cero o la altura es máxima)
+                    if (isExploding && vy <= 0 && y > 10) {
+                        // Explosión radial
+                        const speed = 10 + Math.random() * 5;
+                        const angle = Math.random() * 2 * Math.PI;
+                        const inclination = Math.random() * Math.PI;
+
+                        vx = speed * Math.sin(inclination) * Math.cos(angle);
+                        vy = speed * Math.sin(inclination) * Math.sin(angle);
+                        vz = speed * Math.cos(inclination);
+                        
+                        // Una vez que se inicia la explosión, ya no es el cohete subiendo
+                        isExploding = false;
+                    }
+                    
+                    // Movimiento después de la explosión
+                    if (!isExploding && y > initialPositions[i+1]) {
+                        vy -= 9.8 * delta * 0.2; // Aceleración de gravedad más fuerte
+                        vx *= 0.99; // Fricción
+                        vz *= 0.99;
+                    }
+
+                    // Reinicio si cae por debajo de la base
+                    if (y < initialPositions[i+1] && !CONFIG.effectActive) {
+                        y = initialPositions[i+1]; // Posición de base
+                        vx = 0; vy = 0; vz = 0;
+                    }
+                }
+                // **Lógica de Formas Estáticas (Corazón, Flor, Saturno, Esfera)**
+                else {
+                    // Mover ligeramente las partículas para que no estén estáticas
                     const baseIndex = i / 3;
-                    const basePos = positions[i]; // No actualizaremos esta posición base
+                    const time = clock.elapsedTime * 0.5;
 
-                    // Pequeña oscilación usando Seno/Coseno
-                    vx = Math.sin(time + baseIndex) * 0.05;
-                    vy = Math.cos(time + baseIndex) * 0.05;
-                    vz = Math.sin(time * 0.5 + baseIndex) * 0.05;
+                    // Volver a la posición inicial (la forma) con una fuerza de resorte
+                    const returnForce = 0.01;
+                    const dx = initialPositions[i] - x;
+                    const dy = initialPositions[i + 1] - y;
+                    const dz = initialPositions[i + 2] - z;
+
+                    vx += dx * returnForce;
+                    vy += dy * returnForce;
+                    vz += dz * returnForce;
+
+                    // Agitar o Pulsar (reacción al gesto CERRAR)
+                    if (CONFIG.effectActive) {
+                        const shakeFactor = 0.5;
+                        vx += (Math.random() - 0.5) * shakeFactor;
+                        vy += (Math.random() - 0.5) * shakeFactor;
+                        vz += (Math.random() - 0.5) * shakeFactor;
+                    }
+
+                    // Pequeño movimiento de "vida" (perlin noise simulado)
+                    vx += Math.sin(time + baseIndex) * 0.005;
+                    vy += Math.cos(time + baseIndex) * 0.005;
+                    vz += Math.sin(time * 0.5 + baseIndex) * 0.005;
+
+                    // Fricción/Amortiguamiento
+                    vx *= 0.95;
+                    vy *= 0.95;
+                    vz *= 0.95;
                 }
 
                 // Aplicar la velocidad a la posición
-                x += vx * CONFIG.speed * 5;
-                y += vy * CONFIG.speed * 5;
-                z += vz * CONFIG.speed * 5;
+                x += vx * CONFIG.speedMultiplier * 5;
+                y += vy * CONFIG.speedMultiplier * 5;
+                z += vz * CONFIG.speedMultiplier * 5;
 
                 // Almacenar las nuevas posiciones y velocidades
                 positions[i] = x;
@@ -463,10 +476,7 @@
                 velocities[i + 2] = vz;
             }
 
-            // Notificar a Three.js que las posiciones han cambiado
             geometry.attributes.position.needsUpdate = true;
-
-            // Renderizar la escena
             renderer.render(scene, camera);
         }
 
@@ -476,4 +486,3 @@
     </script>
 </body>
 </html>
-
