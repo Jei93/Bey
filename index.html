@@ -3,395 +3,455 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Partículas Gestual 3D</title>
-    
+    <title>Partículas Reactivas IA + Audio</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Segoe UI', sans-serif; }
-        
-        /* Contenedor de Video (Oculto visualmente pero activo) */
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; user-select: none; }
         .input_video { display: none; }
-        
-        /* Canvas 3D */
         #canvas3d { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
 
-        /* Interfaz de Usuario (Glassmorphism) */
+        /* UI Panel - Glassmorphism Avanzado */
         #ui-panel {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            width: 280px;
-            padding: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 15px;
-            z-index: 10;
-            color: white;
-            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
-            transition: opacity 0.3s;
+            position: absolute; top: 20px; left: 20px; width: 300px;
+            padding: 25px;
+            background: rgba(10, 10, 10, 0.6);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            z-index: 10; color: white;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+            transition: opacity 0.5s;
+            opacity: 0; pointer-events: none; /* Oculto hasta iniciar */
         }
 
-        h2 { margin: 0 0 15px 0; font-size: 1.2rem; font-weight: 600; letter-spacing: 1px; }
-        p { font-size: 0.85rem; color: #ccc; margin-bottom: 15px; }
-
-        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        h2 { margin: 0 0 10px 0; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 2px; background: linear-gradient(90deg, #00d2ff, #ff0099); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .info-row { display: flex; justify-content: space-between; font-size: 0.8rem; color: #aaa; margin-bottom: 15px; }
         
+        /* Botones de formas */
+        .shape-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 20px; }
         button {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: white;
-            padding: 8px;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-size: 0.9rem;
+            background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff; padding: 10px; border-radius: 8px; cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); font-size: 0.85rem;
         }
+        button:hover { background: rgba(255, 255, 255, 0.15); transform: scale(1.02); }
+        button.active { background: #00d2ff; color: #000; font-weight: bold; box-shadow: 0 0 15px rgba(0, 210, 255, 0.4); border: none; }
 
-        button:hover { background: rgba(255, 255, 255, 0.3); transform: translateY(-2px); }
-        button.active { background: #00d2ff; color: #000; border-color: #00d2ff; font-weight: bold; }
+        /* Visualizador de Audio Simple */
+        #audio-viz { width: 100%; height: 4px; background: #333; border-radius: 2px; overflow: hidden; margin-bottom: 15px; }
+        #audio-bar { width: 0%; height: 100%; background: linear-gradient(90deg, #00d2ff, #ff0099); transition: width 0.1s; }
 
-        label { display: block; margin-bottom: 5px; font-size: 0.9rem; }
-        input[type="color"] { width: 100%; border: none; height: 35px; cursor: pointer; border-radius: 5px; }
-
-        #loading {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: #00d2ff; font-size: 1.5rem; z-index: 20; font-weight: bold;
-            text-shadow: 0 0 10px rgba(0,210,255,0.5);
-            pointer-events: none;
+        /* Pantalla de Inicio (Overlay) */
+        #start-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); z-index: 100;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            backdrop-filter: blur(5px);
         }
+        #start-btn {
+            padding: 15px 40px; font-size: 1.2rem; letter-spacing: 2px;
+            background: transparent; border: 2px solid #00d2ff; color: #00d2ff;
+            border-radius: 30px; cursor: pointer; transition: 0.3s; text-transform: uppercase;
+        }
+        #start-btn:hover { background: #00d2ff; color: #000; box-shadow: 0 0 30px #00d2ff; }
         
-        .status-dot {
-            height: 10px; width: 10px; background-color: #ff4444; border-radius: 50%;
-            display: inline-block; margin-right: 5px; box-shadow: 0 0 5px #ff4444;
-        }
-        .status-active { background-color: #00ff88; box-shadow: 0 0 5px #00ff88; }
-
+        .loading-text { margin-top: 20px; color: #666; font-size: 0.9rem; }
     </style>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
 <body>
 
-    <div id="loading">Cargando IA y Modelos 3D...</div>
+    <div id="start-overlay">
+        <button id="start-btn" onclick="startExperience()">INICIAR EXPERIENCIA</button>
+        <div class="loading-text" id="loading-msg">Habilita cámara y micrófono</div>
+    </div>
 
     <div id="ui-panel">
-        <h2><span id="cam-status" class="status-dot"></span>Control Gestual</h2>
-        <p>Abre la mano para expandir, cierra para contraer. Mueve la mano para rotar.</p>
-        
-        <label>Forma:</label>
-        <div class="btn-group">
-            <button onclick="setShape('heart')" class="active" id="btn-heart">Corazón</button>
-            <button onclick="setShape('saturn')" id="btn-saturn">Saturno</button>
-            <button onclick="setShape('flower')" id="btn-flower">Flor</button>
-            <button onclick="setShape('fireworks')" id="btn-fireworks">Fuegos</button>
+        <h2>Partículas Vivas</h2>
+        <div class="info-row">
+            <span>Gestos: Mano / Pinza</span>
+            <span id="fps-counter">60 FPS</span>
         </div>
 
-        <label>Color de Partículas:</label>
-        <input type="color" id="colorPicker" value="#00d2ff">
+        <div id="audio-viz"><div id="audio-bar"></div></div>
+        
+        <div class="shape-grid">
+            <button onclick="setShape('heart')" class="active" id="btn-heart">Corazón</button>
+            <button onclick="setShape('galaxy')" id="btn-galaxy">Galaxia</button>
+            <button onclick="setShape('dna')" id="btn-dna">ADN</button>
+            <button onclick="setShape('sphere')" id="btn-sphere">Esfera</button>
+        </div>
+        <p style="font-size: 0.8rem; color: #666; text-align: center;">Pon música cerca para ver la reacción.</p>
     </div>
 
     <video class="input_video"></video>
     <canvas id="canvas3d"></canvas>
 
     <script>
-        // --- CONFIGURACIÓN THREE.JS ---
-        const scene = new THREE.Scene();
-        // Niebla suave para profundidad
-        scene.fog = new THREE.FogExp2(0x050505, 0.002);
+        // --- 1. CONFIGURACIÓN INICIAL & AUDIO ---
+        let audioContext, analyser, dataArray;
+        let audioVolume = 0; // 0 a 1
+        let bassLevel = 0;   // Reactividad a graves
+        let isAudioActive = false;
 
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.z = 30;
+        async function startExperience() {
+            const overlay = document.getElementById('start-overlay');
+            const btn = document.getElementById('start-btn');
+            btn.innerText = "CARGANDO...";
+            
+            try {
+                // Iniciar Audio
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 512;
+                
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+                
+                // Conectar Audio
+                const source = audioContext.createMediaStreamSource(stream);
+                source.connect(analyser);
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                isAudioActive = true;
+
+                // Iniciar Cámara (MediaPipe usa el video element pero ya tenemos el stream)
+                const videoElement = document.getElementsByClassName('input_video')[0];
+                videoElement.srcObject = stream;
+                videoElement.play();
+
+                // Iniciar lógica de cámara MediaPipe
+                await camera.start();
+
+                // Ocultar overlay y mostrar UI
+                overlay.style.opacity = 0;
+                setTimeout(() => overlay.remove(), 500);
+                document.getElementById('ui-panel').style.opacity = 1;
+                document.getElementById('ui-panel').style.pointerEvents = 'auto';
+
+            } catch (err) {
+                alert("Error: Necesitamos acceso a cámara y micrófono. " + err);
+                btn.innerText = "REINTENTAR";
+            }
+        }
+
+        // --- 2. THREE.JS & PARTICULAS ---
+        const scene = new THREE.Scene();
+        const camera3D = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera3D.position.z = 25;
 
         const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas3d'), alpha: true, antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Optimización retina
 
-        // --- SISTEMA DE PARTÍCULAS ---
-        const PARTICLE_COUNT = 15000; // Cantidad de partículas
+        // Partículas
+        const COUNT = 12000;
         const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(PARTICLE_COUNT * 3);
-        const targetPositions = new Float32Array(PARTICLE_COUNT * 3); // A donde quieren ir las partículas
+        const positions = new Float32Array(COUNT * 3);
+        const colors = new Float32Array(COUNT * 3);
         
-        // Inicializar posiciones aleatorias
-        for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
-            positions[i] = (Math.random() - 0.5) * 100;
-            targetPositions[i] = positions[i];
+        // FÍSICA: Usamos arrays extra para la simulación de muelles
+        const targetPositions = new Float32Array(COUNT * 3); 
+        const velocities = new Float32Array(COUNT * 3); 
+
+        const colorObj = new THREE.Color();
+
+        for (let i = 0; i < COUNT; i++) {
+            const idx = i * 3;
+            positions[idx] = (Math.random() - 0.5) * 50;
+            positions[idx+1] = (Math.random() - 0.5) * 50;
+            positions[idx+2] = (Math.random() - 0.5) * 50;
+            
+            velocities[idx] = 0; velocities[idx+1] = 0; velocities[idx+2] = 0;
+            
+            // Colores iniciales cyan/morado
+            colorObj.setHSL(Math.random(), 0.7, 0.5);
+            colors[idx] = colorObj.r; colors[idx+1] = colorObj.g; colors[idx+2] = colorObj.b;
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-        // Textura simple para la partícula (círculo difuso generado por código para no cargar imagenes externas)
-        const getTexture = () => {
+        // Textura generada proceduralmente (Glow)
+        const getSprite = () => {
             const canvas = document.createElement('canvas');
             canvas.width = 32; canvas.height = 32;
-            const ctx = canvas.getContext('2d');
-            const grad = ctx.createRadialGradient(16,16,0,16,16,16);
-            grad.addColorStop(0, 'rgba(255,255,255,1)');
-            grad.addColorStop(1, 'rgba(255,255,255,0)');
-            ctx.fillStyle = grad;
-            ctx.fillRect(0,0,32,32);
+            const context = canvas.getContext('2d');
+            const gradient = context.createRadialGradient(16, 16, 0, 16, 16, 16);
+            gradient.addColorStop(0, 'rgba(255,255,255,1)');
+            gradient.addColorStop(0.2, 'rgba(255,255,255,0.8)');
+            gradient.addColorStop(0.5, 'rgba(255,255,255,0.2)');
+            gradient.addColorStop(1, 'rgba(0,0,0,0)');
+            context.fillStyle = gradient;
+            context.fillRect(0, 0, 32, 32);
             const texture = new THREE.Texture(canvas);
             texture.needsUpdate = true;
             return texture;
         };
 
         const material = new THREE.PointsMaterial({
-            size: 0.3,
-            color: 0x00d2ff,
-            map: getTexture(),
-            transparent: true,
-            opacity: 0.8,
+            size: 0.25,
+            vertexColors: true,
+            map: getSprite(),
             blending: THREE.AdditiveBlending,
-            depthWrite: false
+            depthWrite: false,
+            transparent: true,
+            opacity: 0.9
         });
 
         const particles = new THREE.Points(geometry, material);
         scene.add(particles);
 
-        // --- MATEMÁTICAS DE LAS FORMAS ---
-        // Funciones paramétricas para generar coordenadas objetivo
-
-        function getHeartPoint(t, res) {
-            // Ecuación paramétrica 3D del corazón
-            const x = 16 * Math.pow(Math.sin(t), 3);
-            const y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
-            const z = res; 
-            return {x: x * 0.5, y: y * 0.5, z: z * 2}; // Escala
-        }
-
-        function getSpherePoint() {
-            const u = Math.random();
-            const v = Math.random();
-            const theta = 2 * Math.PI * u;
-            const phi = Math.acos(2 * v - 1);
-            const r = 10 + Math.random() * 2; // Radio con variación
-            return {
-                x: r * Math.sin(phi) * Math.cos(theta),
-                y: r * Math.sin(phi) * Math.sin(theta),
-                z: r * Math.cos(phi)
-            };
-        }
-
-        function getSaturnPoint(i) {
-            // 70% esfera, 30% anillos
-            if (i < PARTICLE_COUNT * 0.7) {
-                const p = getSpherePoint();
-                return {x: p.x * 0.6, y: p.y * 0.6, z: p.z * 0.6}; // Planeta más pequeño
-            } else {
-                // Anillo
-                const angle = Math.random() * Math.PI * 2;
-                const dist = 12 + Math.random() * 6; // Radio interno 12, externo 18
-                return {
-                    x: Math.cos(angle) * dist,
-                    y: (Math.random() - 0.5) * 0.5, // Muy plano en Y
-                    z: Math.sin(angle) * dist
-                };
-            }
-        }
-
-        function getFlowerPoint() {
-            const u = Math.random() * Math.PI * 2;
-            const v = Math.random() * Math.PI;
-            const r = 10 * Math.sin(3 * u) * Math.sin(4 * v); // Ecuación rosa polar 3D
-            return {
-                x: r * Math.sin(u) * Math.cos(v),
-                y: r * Math.sin(u) * Math.sin(v),
-                z: r * Math.cos(u)
-            };
-        }
-
-        // --- LÓGICA DE TRANSICIÓN DE FORMAS ---
+        // --- 3. ALGORITMOS DE FORMAS ---
         let currentShape = 'heart';
 
-        function updateTargets() {
-            for (let i = 0; i < PARTICLE_COUNT; i++) {
-                let p = {x:0, y:0, z:0};
-                const idx = i * 3;
-                
-                if (currentShape === 'heart') {
-                    // Distribución aleatoria sobre la curva
-                    p = getHeartPoint(Math.random() * Math.PI * 2, (Math.random()-0.5) * 5);
-                } else if (currentShape === 'saturn') {
-                    p = getSaturnPoint(i);
-                } else if (currentShape === 'flower') {
-                    p = getFlowerPoint();
-                } else if (currentShape === 'fireworks') {
-                    // Esfera expandida
-                    const sp = getSpherePoint();
-                    p = {x: sp.x * 1.5, y: sp.y * 1.5, z: sp.z * 1.5};
-                }
-
-                targetPositions[idx] = p.x;
-                targetPositions[idx + 1] = p.y;
-                targetPositions[idx + 2] = p.z;
+        function getTargetPoint(i, shape) {
+            // Normalizar índice
+            const t = (i / COUNT) * Math.PI * 2;
+            const x = 0, y = 0, z = 0;
+            
+            if (shape === 'heart') {
+                const hx = 16 * Math.pow(Math.sin(t), 3);
+                const hy = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+                // Extrusión aleatoria en Z para darle volumen
+                return { x: hx * 0.4, y: hy * 0.4, z: (Math.random()-0.5) * 8 };
+            } 
+            else if (shape === 'sphere') {
+                const phi = Math.acos(-1 + (2 * i) / COUNT);
+                const theta = Math.sqrt(COUNT * Math.PI) * phi;
+                const r = 10;
+                return {
+                    x: r * Math.cos(theta) * Math.sin(phi),
+                    y: r * Math.sin(theta) * Math.sin(phi),
+                    z: r * Math.cos(phi)
+                };
             }
+            else if (shape === 'galaxy') {
+                const angle = i * 0.1;
+                const r = 2 + (i / COUNT) * 15; // Espiral
+                const spiralX = r * Math.cos(angle);
+                const spiralZ = r * Math.sin(angle);
+                return { x: spiralX, y: (Math.random()-0.5)*2, z: spiralZ };
+            }
+            else if (shape === 'dna') {
+                const helixR = 4;
+                const height = (i / COUNT) * 30 - 15;
+                const twist = (i / COUNT) * 10 * Math.PI;
+                // Doble hélice
+                const offset = i % 2 === 0 ? 0 : Math.PI; 
+                return {
+                    x: helixR * Math.cos(twist + offset),
+                    y: height,
+                    z: helixR * Math.sin(twist + offset)
+                };
+            }
+            return {x:0, y:0, z:0};
         }
 
-        // Inicializar
-        updateTargets();
+        function updateShapeTargets() {
+            for (let i = 0; i < COUNT; i++) {
+                // Re-distribuimos aleatoriamente los índices para que el morphing sea más orgánico
+                // Usamos una función pseudo-random determinista basada en el índice original e
+                const randI = (i * 12345) % COUNT; 
+                const p = getTargetPoint(randI, currentShape);
+                targetPositions[i*3] = p.x;
+                targetPositions[i*3+1] = p.y;
+                targetPositions[i*3+2] = p.z;
+            }
+        }
+        updateShapeTargets(); // Inicializar
 
-        // Control UI
-        window.setShape = (shape) => {
-            currentShape = shape;
-            updateTargets();
-            // Actualizar botones
+        window.setShape = (s) => {
+            currentShape = s;
+            updateShapeTargets();
             document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-            document.getElementById(`btn-${shape}`).classList.add('active');
+            document.getElementById(`btn-${s}`).classList.add('active');
         };
 
-        document.getElementById('colorPicker').addEventListener('input', (e) => {
-            material.color.set(e.target.value);
-        });
+        // --- 4. GESTOS Y MEDIAPIPE ---
+        let handState = {
+            isOpen: 1, // 0 cerrado, 1 abierto
+            pinch: 0,  // 0 nada, 1 pinza cerrada
+            x: 0, y: 0
+        };
 
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
 
-        // --- INTEGRACIÓN MEDIAPIPE HANDS (GESTOS) ---
-        let handOpenFactor = 0; // 0 = cerrado (puño), 1 = abierto
-        let handPosition = { x: 0, y: 0 };
-        let isHandDetected = false;
-
-        const videoElement = document.getElementsByClassName('input_video')[0];
-
-        function onResults(results) {
-            document.getElementById('loading').style.display = 'none';
-            
-            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                isHandDetected = true;
-                document.getElementById('cam-status').classList.add('status-active');
+        hands.onResults((results) => {
+            if (results.multiHandLandmarks.length > 0) {
+                const lm = results.multiHandLandmarks[0];
                 
-                const landmarks = results.multiHandLandmarks[0];
+                // Posición (centro palma)
+                handState.x = (0.5 - lm[9].x) * 35; 
+                handState.y = (0.5 - lm[9].y) * 25;
 
-                // 1. Calcular posición de la mano (Centro aproximado - Palma)
-                // Usamos la muñeca (0) y el dedo medio (9)
-                const palmX = landmarks[9].x; 
-                const palmY = landmarks[9].y;
-
-                // Mapear de [0,1] a coordenadas normalizadas [-1, 1] invertidas en X (efecto espejo)
-                // El video viene en espejo, así que: (1 - x) invierte, luego centramos.
-                handPosition.x = (0.5 - palmX) * 30; // Multiplicador para sensibilidad
-                handPosition.y = (0.5 - palmY) * 20;
-
-                // 2. Calcular Apertura (Gestos Avanzados)
-                // Distancia promedio de las puntas de los dedos a la muñeca
-                const wrist = landmarks[0];
-                const tips = [4, 8, 12, 16, 20]; // IDs de las puntas
-                let avgDist = 0;
-
-                tips.forEach(tipId => {
-                    const tip = landmarks[tipId];
-                    const d = Math.sqrt(Math.pow(tip.x - wrist.x, 2) + Math.pow(tip.y - wrist.y, 2));
-                    avgDist += d;
+                // Apertura (Promedio distancias al centro)
+                const center = lm[0]; // Muñeca
+                let dists = 0;
+                [4,8,12,16,20].forEach(tip => {
+                    const t = lm[tip];
+                    dists += Math.sqrt((t.x-center.x)**2 + (t.y-center.y)**2);
                 });
-                avgDist /= tips.length;
+                // Normalizar apertura
+                let openVal = (dists / 5 - 0.15) * 4; 
+                handState.isOpen += (Math.max(0, Math.min(1, openVal)) - handState.isOpen) * 0.1;
 
-                // Calibración aproximada: Puño ~0.15, Mano abierta ~0.4+
-                // Normalizamos entre 0 y 1
-                let openness = (avgDist - 0.15) / (0.4 - 0.15);
-                openness = Math.max(0, Math.min(1, openness)); // Clampear
-                
-                // Suavizado (Lerp) para que no tiemble
-                handOpenFactor += (openness - handOpenFactor) * 0.1;
-
+                // Detección PINZA (Distancia Pulgar 4 - Índice 8)
+                const t = lm[4], i = lm[8];
+                const pinchDist = Math.sqrt((t.x-i.x)**2 + (t.y-i.y)**2);
+                const isPinching = pinchDist < 0.05 ? 1 : 0;
+                handState.pinch += (isPinching - handState.pinch) * 0.2; // Suavizado
             } else {
-                isHandDetected = false;
-                document.getElementById('cam-status').classList.remove('status-active');
-                // Si no hay mano, volver a estado neutral suavemente
-                handOpenFactor += (0.5 - handOpenFactor) * 0.05;
-                handPosition.x += (0 - handPosition.x) * 0.05;
-                handPosition.y += (0 - handPosition.y) * 0.05;
+                // Relajar si no hay mano
+                handState.isOpen += (0.8 - handState.isOpen) * 0.05;
+                handState.pinch += (0 - handState.pinch) * 0.1;
             }
-        }
-
-        const hands = new Hands({locateFile: (file) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-        }});
-
-        hands.setOptions({
-            maxNumHands: 1,
-            modelComplexity: 1,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
         });
 
-        hands.onResults(onResults);
-
-        const cameraUtils = new Camera(videoElement, {
-            onFrame: async () => {
-                await hands.send({image: videoElement});
-            },
-            width: 640,
-            height: 480
+        const videoEl = document.getElementsByClassName('input_video')[0];
+        const camera = new Camera(videoEl, {
+            onFrame: async () => { await hands.send({image: videoEl}); },
+            width: 640, height: 480
         });
+
+        // --- 5. BUCLE PRINCIPAL (ANIMACIÓN + FÍSICA) ---
         
-        // Iniciar cámara con manejo de errores básico
-        cameraUtils.start().catch(e => {
-            alert("Error al acceder a la cámara. Asegúrate de dar permisos.");
-            console.error(e);
-        });
+        // Colores para transición
+        const colorPalette = {
+            heart: new THREE.Color(0xff0055),
+            galaxy: new THREE.Color(0x00d2ff),
+            dna: new THREE.Color(0x00ff88),
+            sphere: new THREE.Color(0xffaa00)
+        };
 
-
-        // --- BUCLE DE ANIMACIÓN ---
         let time = 0;
-
         function animate() {
             requestAnimationFrame(animate);
-            time += 0.01;
+            time += 0.015;
 
-            // 1. Morphing de partículas
-            const positionsArray = particles.geometry.attributes.position.array;
-            
-            // Factor de explosión basado en la mano
-            // Si la mano está cerrada (0), scaleFactor < 1 (implosión)
-            // Si la mano está abierta (1), scaleFactor > 1 (explosión)
-            // Rango mapeado: 0.2 (muy cerrado) a 2.5 (muy abierto)
-            const gestureScale = 0.5 + (handOpenFactor * 2.0); 
-
-            // Rotación basada en la posición de la mano en X
-            particles.rotation.y += 0.002 + (handPosition.x * 0.001);
-            particles.rotation.x = -(handPosition.y * 0.05);
-
-            for (let i = 0; i < PARTICLE_COUNT; i++) {
-                const idx = i * 3;
+            // 1. Analizar Audio
+            if (isAudioActive) {
+                analyser.getByteFrequencyData(dataArray);
+                let sum = 0;
+                let bassSum = 0;
+                // Calculamos volumen promedio y graves (primeros 40 bins)
+                for(let i=0; i<dataArray.length; i++) {
+                    sum += dataArray[i];
+                    if(i < 40) bassSum += dataArray[i];
+                }
+                audioVolume = sum / dataArray.length / 255; // 0.0 - 1.0
+                bassLevel = bassSum / 40 / 255; // 0.0 - 1.0
                 
-                // Posición objetivo base
-                let tx = targetPositions[idx];
-                let ty = targetPositions[idx + 1];
-                let tz = targetPositions[idx + 2];
-
-                // Aplicar Ruido/Movimiento orgánico ("respiración")
-                tx += Math.sin(time + ty * 0.1) * 0.2;
-                ty += Math.cos(time + tx * 0.1) * 0.2;
-
-                // Interpolar posición actual hacia objetivo (Morphing suave)
-                // Velocidad 0.05
-                positionsArray[idx] += (tx * gestureScale - positionsArray[idx]) * 0.08;
-                positionsArray[idx + 1] += (ty * gestureScale - positionsArray[idx + 1]) * 0.08;
-                positionsArray[idx + 2] += (tz * gestureScale - positionsArray[idx + 2]) * 0.08;
+                // Visualizador UI
+                document.getElementById('audio-bar').style.width = (audioVolume * 100) + '%';
             }
 
-            particles.geometry.attributes.position.needsUpdate = true;
+            // 2. Factores de Control Global
+            // El audio expande la forma. La mano cerrada contrae (implosión)
+            const expansion = 1 + (bassLevel * 0.8) + (handState.isOpen * 0.5 - 0.5); 
             
-            // Reaccionar al color si es fuegos artificiales (efecto arcoiris)
-            if(currentShape === 'fireworks') {
-                const h = (time * 0.2) % 1;
-                material.color.setHSL(h, 1, 0.5);
+            // Si hay pinza, activamos turbulencia
+            const turbulence = handState.pinch * 0.5;
+
+            // Rotación del sistema completo con la mano
+            particles.rotation.y += 0.002 + (handState.x * 0.0005);
+            particles.rotation.x += (handState.y * 0.0005 - particles.rotation.x) * 0.1;
+
+            // Target Color dinámico
+            const targetColor = colorPalette[currentShape] || new THREE.Color(0xffffff);
+
+            // 3. Bucle de Partículas (Física)
+            const posAttr = particles.geometry.attributes.position;
+            const colAttr = particles.geometry.attributes.color;
+
+            for (let i = 0; i < COUNT; i++) {
+                const idx = i * 3;
+
+                // --- POSICIÓN OBJETIVO BASE ---
+                let tx = targetPositions[idx] * expansion;
+                let ty = targetPositions[idx+1] * expansion;
+                let tz = targetPositions[idx+2] * expansion;
+
+                // --- MODIFICADORES DE AUDIO (Baile) ---
+                // Ondulación basada en la distancia al centro + tiempo
+                if (audioVolume > 0.05) {
+                    const dist = Math.sqrt(tx*tx + ty*ty + tz*tz);
+                    const wave = Math.sin(dist * 0.5 - time * 5) * bassLevel * 2; 
+                    tx += tx/dist * wave; 
+                    ty += ty/dist * wave; 
+                    tz += tz/dist * wave;
+                }
+
+                // --- MODIFICADOR PINZA (Caos/Imán) ---
+                if (handState.pinch > 0.1) {
+                    // Ruido aleatorio cuando pellizcas
+                    tx += (Math.random()-0.5) * turbulence * 10;
+                    ty += (Math.random()-0.5) * turbulence * 10;
+                    tz += (Math.random()-0.5) * turbulence * 10;
+                }
+
+                // --- FÍSICA DE MUELLES (SPRING) ---
+                const px = posAttr.array[idx];
+                const py = posAttr.array[idx+1];
+                const pz = posAttr.array[idx+2];
+
+                // Fuerza del muelle (Hooke's Law)
+                const k = 0.05 + (audioVolume * 0.05); // Más rígido con música alta
+                const damping = 0.85; // Fricción
+
+                let ax = (tx - px) * k;
+                let ay = (ty - py) * k;
+                let az = (tz - pz) * k;
+
+                // Integración de velocidad
+                velocities[idx] += ax;
+                velocities[idx+1] += ay;
+                velocities[idx+2] += az;
+
+                velocities[idx] *= damping;
+                velocities[idx+1] *= damping;
+                velocities[idx+2] *= damping;
+
+                posAttr.array[idx] += velocities[idx];
+                posAttr.array[idx+1] += velocities[idx+1];
+                posAttr.array[idx+2] += velocities[idx+2];
+
+                // --- COLOR ---
+                // Mezcla entre color actual y target
+                // Si la música es alta, tiende a blanco brillante
+                const mixFactor = 0.05;
+                const r = colAttr.array[idx];
+                const g = colAttr.array[idx+1];
+                const b = colAttr.array[idx+2];
+                
+                let tr = targetColor.r + (audioVolume * 2); // Flash blanco con volumen
+                let tg = targetColor.g + (audioVolume * 2);
+                let tb = targetColor.b + (audioVolume * 2);
+
+                colAttr.array[idx] += (tr - r) * mixFactor;
+                colAttr.array[idx+1] += (tg - g) * mixFactor;
+                colAttr.array[idx+2] += (tb - b) * mixFactor;
             }
 
-            renderer.render(scene, camera);
+            posAttr.needsUpdate = true;
+            colAttr.needsUpdate = true;
+
+            // Tamaño de partículas reactivo
+            material.size = 0.2 + (audioVolume * 0.5);
+
+            renderer.render(scene, camera3D);
         }
 
-        // Manejo de resize
+        // Resize
         window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
+            camera3D.aspect = window.innerWidth / window.innerHeight;
+            camera3D.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
         animate();
-
     </script>
 </body>
 </html>
